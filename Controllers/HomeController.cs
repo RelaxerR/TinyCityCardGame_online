@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using TinyCityCardGame_online.Models;
 
@@ -6,26 +5,24 @@ namespace TinyCityCardGame_online.Controllers;
 
 public class HomeController : Controller
 {
-    private readonly ILogger<HomeController> _logger;
+    public IActionResult Index() => View();
 
-    public HomeController(ILogger<HomeController> logger)
+    [HttpPost]
+    public IActionResult CreateLobby(HomeViewModel model)
     {
-        _logger = logger;
+        if (string.IsNullOrEmpty(model.PlayerName)) return View("Index");
+
+        // Генерируем уникальный код комнаты
+        string roomCode = Guid.NewGuid().ToString().Substring(0, 6).ToUpper();
+        
+        // Переходим в лобби, передавая код и имя
+        return RedirectToAction("Lobby", "Game", new { code = roomCode, user = model.PlayerName });
     }
 
-    public IActionResult Index()
+    [HttpPost]
+    public IActionResult JoinLobby(HomeViewModel model)
     {
-        return View();
-    }
-
-    public IActionResult Privacy()
-    {
-        return View();
-    }
-
-    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-    public IActionResult Error()
-    {
-        return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+        if (string.IsNullOrEmpty(model.RoomCode)) return View("Index");
+        return RedirectToAction("Lobby", "Game", new { code = model.RoomCode, user = model.PlayerName });
     }
 }

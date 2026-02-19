@@ -1,7 +1,12 @@
+using TinyCityCardGame_online.Hubs;
+using TinyCityCardGame_online.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<GameSessionService>();
 
 var app = builder.Build();
 
@@ -25,5 +30,6 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
+app.MapHub<GameHub>("/gameHub");
 
 app.Run();
