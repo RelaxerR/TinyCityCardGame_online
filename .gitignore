@@ -1,0 +1,27 @@
+## .NET Core / Visual Studio / Rider
+bin/
+obj/
+out/
+.vs/
+.idea/
+*.user
+*.userosscache
+*.sln.doccache
+
+## Специфично для Rider (JetBrains)
+.idea/
+*.sln.iml
+
+## Публикация и секреты
+appsettings.Development.json
+secrets.json
+*.pubxml
+*.csproj.user
+
+## Файлы ОС
+.DS_Store
+Thumbs.db
+
+## Node.js (если решишь добавить сложные скрипты в будущем)
+node_modules/
+npm-debug.log*
