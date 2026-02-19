@@ -10,4 +10,11 @@ public class GameController : Controller
         ViewBag.UserName = user;
         return View();
     }
+    
+    public IActionResult Play(string code, string user)
+    {
+        ViewBag.RoomCode = code;
+        ViewBag.UserName = user;
+        return View();
+    }
 }

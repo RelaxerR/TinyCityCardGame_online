@@ -21,4 +21,15 @@ public class GameHub : Hub
         // Рассылаем ВСЕМ в комнате обновленный список
         await Clients.Group(roomCode).SendAsync("UpdatePlayerList", allPlayers);
     }
+    
+    public async Task StartGame(string roomCode)
+    {
+        // 1. Генерируем начальное состояние (колода, рынок, монеты)
+        var gameState = _sessionService.CreateGame(roomCode); 
+    
+        // 2. Уведомляем всех в комнате, что пора переходить на страницу игры
+        // Мы передаем сигнал GameStarted, который мы уже прописали в JS лобби
+        await Clients.Group(roomCode).SendAsync("GameStarted");
+    }
+
 }

@@ -34,6 +34,11 @@
             }
         });
 
+        connection.on("GameStarted", () => {
+            // Перенаправляем игрока на страницу игры, передавая его имя и код комнаты
+            window.location.href = `/Game/Play?code=${roomCode}&user=${userName}`;
+        });
+
         connection.start()
             .then(() => {
                 console.log("Соединение установлено!");

@@ -1,0 +1,85 @@
+<div class="game-board">
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
+    <div class="top-bar">
+        <div class="active-event">
+            <span>Активная фаза:</span>
+            <div id="currentPhaseColor" class="color-indicator blue"></div>
+        </div>
+        
+        <div class="players-status" id="playersList">
+            <!-- Сюда SignalR подставит игроков и их монеты -->
+            <div class="player-pill active">Игрок 1: 15💰</div>
+            <div class="player-pill">Игрок 2: 10💰</div>
+        </div>
+    </div>
+
+    <!-- РЫНОК: Колода + 5 открытых карт -->
+    <div class="market-zone">
+        <div class="deck-stack">
+            <div class="card-back">🎴<br>Колода</div>
+        </div>
+        <div class="open-market" id="marketCards">
+            <!-- 5 ячеек -->
+            @for(int i=0; i<5; i++) {
+                <div class="card-slot empty">Пусто</div>
+            }
+        </div>
+    </div>
+
+    <!-- РУКА ИГРОКА -->
+    <div class="player-hand-section">
+        <h3>Ваши владения</h3>
+        <div class="my-cards" id="myInventory">
+            <!-- Карты, которые уже куплены -->
+        </div>
+        <div class="player-stats">
+            <span class="coin-count">Ваше золото: <strong id="myCoins">3</strong> 💰</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .game-board { background: #d2b48c; height: 100vh; padding: 20px; display: flex; flex-direction: column; gap: 30px; }
+    
+    /* Стили панелей */
+    .top-bar { display: flex; justify-content: space-between; background: rgba(255,255,255,0.3); padding: 15px; border-radius: 10px; }
+    .color-indicator { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; display: inline-block; }
+    .blue { background: #3498db; } .green { background: #2ecc71; } 
+    .red { background: #e74c3c; } .purple { background: #9b59b6; }
+
+    /* Рынок */
+    .market-zone { display: flex; gap: 20px; justify-content: center; align-items: center; }
+    .open-market { display: flex; gap: 15px; background: rgba(0,0,0,0.1); padding: 20px; border-radius: 15px; }
+    
+    /* Карточка */
+    .card-item { 
+        width: 120px; height: 180px; background: #fffdf0; border: 4px solid #8b4513; 
+        border-radius: 10px; position: relative; cursor: pointer; transition: transform 0.2s;
+    }
+    .card-item:hover { transform: translateY(-10px); }
+    .card-header { height: 30px; color: white; text-align: center; font-weight: bold; }
+    
+    .card-back { 
+        width: 120px; height: 180px; background: #8b4513; color: white; 
+        display: flex; align-items: center; justify-content: center; border-radius: 10px; 
+    }
+
+    .player-hand-section { margin-top: auto; background: #f5f5dc; padding: 20px; border-radius: 20px 20px 0 0; border-top: 5px solid #a0522d; }
+    .my-cards { display: flex; gap: 10px; overflow-x: auto; }
+</style>
+
+<script>
+    // Функция для отрисовки карты в HTML
+    function createCardHtml(card) {
+        return `
+        <div class="card-item" onclick="buyCard(${card.id})">
+            <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
+            <div class="card-body text-center">
+                <div style="font-size: 3rem">${card.icon}</div>
+                <div>Доход: ${card.reward}💰</div>
+            </div>
+            <div class="card-footer text-center">Цена: ${card.cost}</div>
+        </div>
+    `;
+    }
+</script>
