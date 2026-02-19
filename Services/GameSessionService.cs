@@ -4,7 +4,6 @@ namespace TinyCityCardGame_online.Services;
 
 public class GameSessionService
 {
-    // Словарь: КодКомнаты -> Список Имен
     private readonly Dictionary<string, List<string>> _rooms = new();
     private readonly Dictionary<string, GameState> _activeGames = new();
 
@@ -16,41 +15,61 @@ public class GameSessionService
 
     public List<string> GetPlayers(string roomCode) => 
         _rooms.ContainsKey(roomCode) ? _rooms[roomCode] : new List<string>();
-    
+
+    public GameState GetGameState(string roomCode) =>
+        _activeGames.ContainsKey(roomCode) ? _activeGames[roomCode] : null;
+
     public GameState CreateGame(string roomCode)
     {
         var state = new GameState { RoomCode = roomCode };
-    
-        // Генерируем "пачку" карт (например, по 10 штук каждого типа)
+        var rng = new Random();
+
+        // 1. Создаем игроков с рандомными монетами (5-10)
+        var playerNames = GetPlayers(roomCode);
+        foreach (var name in playerNames)
+        {
+            state.Players.Add(new Player 
+            { 
+                Name = name, 
+                Coins = rng.Next(5, 11) // От 5 до 10 монет
+            });
+        }
+
+        // 2. Устанавливаем порядок хода: от самого бедного к самому богатому
+        state.TurnOrder = state.Players
+            .OrderBy(p => p.Coins)
+            .Select(p => p.Name)
+            .ToList();
+
+        // 3. Наполняем колоду (по 10 карт каждого типа)
         var baseCards = new List<Card> {
-            new Card { Id = 1, Name = "Пшеница", Color = CardColor.Blue, Cost = 1, Reward = 1, Icon = "🌾" },
-            new Card { Id = 2, Name = "Лес", Color = CardColor.Green, Cost = 2, Reward = 2, Icon = "🌲" },
-            new Card { Id = 3, Name = "Рынок", Color = CardColor.Red, Cost = 3, Reward = 3, Icon = "⚖️" },
-            new Card { Id = 4, Name = "Шахта", Color = CardColor.Purple, Cost = 6, Reward = 5, Icon = "⛏️" }
+            new Card { Name = "Пшеница", Color = CardColor.Blue, Cost = 1, Reward = 1, Icon = "🌾" },
+            new Card { Name = "Лес", Color = CardColor.Green, Cost = 2, Reward = 2, Icon = "🌲" },
+            new Card { Name = "Рынок", Color = CardColor.Red, Cost = 3, Reward = 3, Icon = "⚖️" },
+            new Card { Name = "Шахта", Color = CardColor.Purple, Cost = 6, Reward = 5, Icon = "⛏️" }
         };
 
-        foreach(var card in baseCards) {
+        foreach(var bc in baseCards) {
             for(int i = 0; i < 10; i++) { 
                 state.Deck.Add(new Card { 
-                    Id = Guid.NewGuid().GetHashCode(), // Уникальный ID для каждой копии
-                    Name = card.Name, Color = card.Color, Cost = card.Cost, Reward = card.Reward, Icon = card.Icon 
+                    Id = Guid.NewGuid().GetHashCode(), 
+                    Name = bc.Name, Color = bc.Color, Cost = bc.Cost, Reward = bc.Reward, Icon = bc.Icon 
                 });
             }
         }
 
-        var rng = new Random();
+        // Перемешиваем колоду
         state.Deck = state.Deck.OrderBy(x => rng.Next()).ToList();
 
-        // Безопасное взятие карт на рынок (N+1, где N - кол-во игроков)
-        int playerCount = GetPlayers(roomCode).Count;
-        int marketSize = playerCount + 1; 
-
+        // 4. Формируем рынок (N+1 карт)
+        int marketSize = state.Players.Count + 1; 
         state.Market = state.Deck.Take(marketSize).ToList();
-        state.Deck.RemoveRange(0, marketSize); // Теперь тут точно хватит карт
-    
+        state.Deck.RemoveRange(0, marketSize);
+        
+        // 5. Начальный цвет и индекс игрока
         state.ActiveColor = (CardColor)rng.Next(0, 4);
-    
-        // Не забудь добавить поле Dictionary<string, GameState> _activeGames в класс сервиса!
+        state.CurrentTurnIndex = 0;
+
         _activeGames[roomCode] = state; 
         return state;
     }
@@ -64,6 +83,9 @@ public class GameState
     public List<Card> Deck { get; set; } = new();
     public CardColor ActiveColor { get; set; }
     public int CurrentPlayerIndex { get; set; } = 0;
+    
+    public List<string> TurnOrder { get; set; } = new(); // Список имен по порядку хода
+    public int CurrentTurnIndex { get; set; } = 0;
 }
 
 public class Player

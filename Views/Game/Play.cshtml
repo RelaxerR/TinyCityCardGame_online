@@ -1,3 +1,81 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<script src="/js/game-connector.js"></script>
+
+<script>
+    // Как только страница готова
+    document.addEventListener("DOMContentLoaded", () => {
+        
+        // Запускаем соединение
+        GameApp.start(() => {
+            // После подключения просим сервер дать данные игры
+            GameApp.connection.invoke("InitGameView", GameApp.roomCode);
+        });
+
+        // Слушаем обновления от сервера
+        GameApp.connection.on("UpdateTable", (data) => {
+            renderGame(data);
+        });
+    });
+
+    function renderGame(data) {
+        // 1. Кто я и мой ли сейчас ход?
+        const myName = GameApp.userName;
+        const currentPlayerName = data.currentPlayer;
+        const isMyTurn = (myName === currentPlayerName);
+
+        console.log(`Сейчас ходит: ${currentPlayerName}. Я: ${myName}. Мой ход: ${isMyTurn}`);
+
+        // 2. Индикатор цвета
+        const colorBox = document.getElementById("currentPhaseColor");
+        colorBox.className = "color-indicator " + data.activeColor.toLowerCase();
+
+        // 3. Список игроков
+        const playersDiv = document.getElementById("playersList");
+        playersDiv.innerHTML = data.players.map(p => {
+            const isThisPlayerTurn = p.name === currentPlayerName;
+            return `
+            <div class="player-pill ${isThisPlayerTurn ? 'active-glow' : ''}">
+                ${p.name}: <strong>${p.coins}💰</strong>
+            </div>`;
+        }).join('');
+
+        // 4. РЫНОК (Исправляем кликабельность)
+        const marketDiv = document.getElementById("marketCards");
+        marketDiv.innerHTML = data.market.map(card => `
+        <div class="card-item ${isMyTurn ? 'clickable' : 'disabled'}" 
+             onclick="sendClick(${card.id}, ${isMyTurn})">
+            <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
+            <div class="card-body">
+                <div style="font-size: 2.5rem">${card.icon}</div>
+                <div class="reward-text">Доход: ${card.reward}💰</div>
+            </div>
+            <div class="card-footer">Цена: ${card.cost}</div>
+        </div>
+    `).join('');
+
+        // 5. Мои монеты внизу
+        const me = data.players.find(p => p.name === myName);
+        if (me) {
+            document.getElementById("myCoins").innerText = me.coins;
+            // Отрисовка инвентаря
+            const inventoryDiv = document.getElementById("myInventory");
+            inventoryDiv.innerHTML = me.inventory.map(c => `
+            <div class="card-mini ${c.color.toLowerCase()}" title="${c.name}">${c.icon}</div>
+        `).join('');
+        }
+    }
+
+    function sendClick(cardId, canClick) {
+        if (!canClick) {
+            console.warn("Попытка нажать не в свой ход");
+            return;
+        }
+        console.log("Отправка клика по карте:", cardId);
+        GameApp.connection.invoke("PlayerClickCard", GameApp.roomCode, cardId)
+            .catch(err => console.error("Ошибка при клике:", err));
+    }
+</script>
+
 <div class="game-board">
     <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
     <div class="top-bar">
@@ -66,20 +144,30 @@
 
     .player-hand-section { margin-top: auto; background: #f5f5dc; padding: 20px; border-radius: 20px 20px 0 0; border-top: 5px solid #a0522d; }
     .my-cards { display: flex; gap: 10px; overflow-x: auto; }
-</style>
 
-<script>
-    // Функция для отрисовки карты в HTML
-    function createCardHtml(card) {
-        return `
-        <div class="card-item" onclick="buyCard(${card.id})">
-            <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
-            <div class="card-body text-center">
-                <div style="font-size: 3rem">${card.icon}</div>
-                <div>Доход: ${card.reward}💰</div>
-            </div>
-            <div class="card-footer text-center">Цена: ${card.cost}</div>
-        </div>
-    `;
+    .player-pill.active-glow {
+        border: 3px solid #ffd700;
+        box-shadow: 0 0 15px #ffd700;
+        transform: scale(1.1);
+        background: #8b4513;
+        color: white;
     }
-</script>
+    .card-item.clickable:hover { border-color: #ffd700; cursor: pointer; }
+    .card-item.disabled { opacity: 0.7; cursor: not-allowed; }
+
+    .active-glow {
+        background: #8b4513 !important;
+        color: #ffd700 !important;
+        box-shadow: 0 0 20px #ffd700;
+        border: 2px solid #ffd700;
+    }
+    .card-mini {
+        width: 40px; height: 60px; border-radius: 5px;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin-right: 5px; border: 1px solid #000; font-size: 1.5rem;
+    }
+    .card-item.disabled { filter: grayscale(0.5); opacity: 0.8; }
+    .card-footer { background: rgba(0,0,0,0.1); font-weight: bold; border-radius: 0 0 10px 10px; }
+
+
+</style>

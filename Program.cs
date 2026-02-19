@@ -7,6 +7,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<GameSessionService>();
+builder.Services.AddControllersWithViews();
+
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(options => {
+        // Превращает Enum в строку (например, 0 -> "Blue")
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+
+// Для SignalR тоже нужно добавить (если используешь System.Text.Json)
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options => {
+        options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+
 
 var app = builder.Build();
 
