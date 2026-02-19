@@ -9,7 +9,6 @@ out/
 *.sln.doccache
 
 ## Специфично для Rider (JetBrains)
-.idea/
 *.sln.iml
 
 ## Публикация и секреты
