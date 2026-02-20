@@ -28,8 +28,54 @@
             addToLog(msg, type); // Добавляем в свиток
             showTurnAlert(msg);  // И показываем на экране на секунду
         });
+
+        GameApp.connection.on("GameOver", (winnerName) => {
+            // 1. Создаем оверлей победы
+            const overlay = document.createElement("div");
+            overlay.className = "victory-overlay";
+            overlay.innerHTML = `
+        <div class="victory-box">
+            <h1 class="victory-title">👑 ТРИУМФ 👑</h1>
+            <div class="winner-name">${winnerName.toUpperCase()}</div>
+            <p>Возвёл величайшую столицу и накопил богатства!</p>
+            <hr class="victory-hr">
+            <div id="countdown-msg">Возврат в порт через <span id="timer-sec">5</span>...</div>
+        </div>
+        <div id="coin-rain"></div>
+    `;
+            document.body.appendChild(overlay);
+
+            // 2. Запускаем "Золотой дождь" (анимация монет)
+            startCoinRain();
+
+            // 3. Обратный отсчет (5 секунд)
+            let seconds = 5;
+            const timerElem = document.getElementById("timer-sec");
+            const interval = setInterval(() => {
+                seconds--;
+                if (timerElem) timerElem.innerText = seconds;
+                if (seconds <= 0) {
+                    clearInterval(interval);
+                    // Возвращаем в главное меню или лобби
+                    window.location.href = "/";
+                }
+            }, 1000);
+        });
     });
 
+    function startCoinRain() {
+        const container = document.getElementById("coin-rain");
+        for (let i = 0; i < 50; i++) {
+            const coin = document.createElement("div");
+            coin.className = "falling-coin";
+            coin.innerText = "💰";
+            coin.style.left = Math.random() * 100 + "vw";
+            coin.style.animationDelay = Math.random() * 2 + "s";
+            coin.style.fontSize = (Math.random() * 20 + 20) + "px";
+            container.appendChild(coin);
+        }
+    }
+    
     function renderGame(data) {
         const myName = GameApp.userName;
         const currentPlayerName = data.currentPlayer;
@@ -94,44 +140,55 @@
         previousMarketCount = data.market.length;
 
         // --- ИНВЕНТАРЬ (Flip-эффект и Активация) ---
-        if (myData) {
-            document.getElementById("myCoins").innerText = myData.coins;
-            const inventoryDiv = document.getElementById("myInventory");
+        const inventoryDiv = document.getElementById("myInventory");
 
-            inventoryDiv.innerHTML = myData.inventory.map(c => {
-                const cardColor = String(c.color).toLowerCase();
-                const serverActiveColor = String(data.activeColor).toLowerCase();
+        if (myData && inventoryDiv) {
+            // Обновляем монеты
+            const myCoinsElem = document.getElementById("myCoins");
+            if (myCoinsElem) myCoinsElem.innerText = myData.coins;
 
-                const isRightPhase = (cardColor === serverActiveColor);
-                const canActivate = isRightPhase && isMyTurn && !c.isUsed;
-                const usedClass = c.isUsed ? "card-used" : "";
+            // Безопасно получаем активный цвет от сервера
+            const serverActiveColor = String(data.activeColor || "").toLowerCase();
 
-                // Формируем HTML для картинки в инвентаре
-                const cardImg = c.icon
-                    ? `<img src="${c.icon}" class="card-illustration-mini" alt="${c.name}">`
-                    : `<div class="no-icon-mini">🏰</div>`;
+            if (myData.inventory && myData.inventory.length > 0) {
+                inventoryDiv.innerHTML = myData.inventory.map(c => {
+                    const cardColor = String(c.color || "").toLowerCase();
+                    const isRightPhase = (cardColor === serverActiveColor);
 
-                return `
-        <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
-             onclick="useCard(${c.id}, ${canActivate}, event)">
-            <div class="card-mini-inner">
-                <!-- ЛИЦО КАРТЫ -->
-                <div class="card-front ${cardColor} ${canActivate ? 'active-card-glow' : ''} ${usedClass}">
-                     <div class="img-container-mini">
-                        ${cardImg}
-                     </div>
-                     <div class="card-mini-name">${c.name}</div>
+                    // Карта активна: мой ход + фаза совпала + не использована
+                    const canActivate = isRightPhase && isMyTurn && !c.isUsed;
+                    const usedClass = c.isUsed ? "card-used" : "";
+
+                    // Картинка или заглушка
+                    const cardImgHtml = c.icon
+                        ? `<img src="${c.icon}" class="card-illustration-mini" alt="${c.name}">`
+                        : `<div class="no-icon-mini">🏰</div>`;
+
+                    return `
+            <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
+                 onclick="useCard(${c.id}, ${canActivate}, event)">
+                <div class="card-mini-inner">
+                    <!-- ЛИЦО КАРТЫ -->
+                    <div class="card-front ${cardColor} ${canActivate ? 'active-card-glow' : ''} ${usedClass}">
+                         <div class="img-container-mini">
+                            ${cardImgHtml}
+                         </div>
+                         <div class="card-mini-name">${c.name || 'Карта'}</div>
+                    </div>
+                    <!-- РУБАШКА -->
+                    <div class="card-back">
+                        <strong style="font-size: 0.8rem;">${c.name}</strong>
+                        <p style="font-size: 10px; margin: 2px 0;">${c.description || 'Эффект поселения'}</p>
+                        <div style="border-top: 1px solid #ffd700; width: 100%; margin-top: auto; padding-top: 3px;">
+                            <span style="color: #ffd700; font-weight: bold; font-size: 0.7rem;">${c.effect || ''}</span>
+                        </div>
+                    </div>
                 </div>
-                <!-- РУБАШКА С ОПИСАНИЕМ -->
-                <div class="card-back">
-                    <strong style="font-size: 0.8rem;">${c.name}</strong>
-                    <p style="font-size: 10px; margin: 2px 0;">${c.description || 'Эффект карты'}</p>
-                    <hr style="margin: 2px 0; border-color: #ffd700">
-                    <span style="color: #ffd700; font-weight: bold; font-size: 0.7rem;">${c.effect}</span>
-                </div>
-            </div>
-        </div>`;
-            }).join('');
+            </div>`;
+                }).join('');
+            } else {
+                inventoryDiv.innerHTML = "<p style='opacity:0.5; padding: 20px;'>Ваши владения пока пусты...</p>";
+            }
         }
 
         // --- КНОПКА ЗАВЕРШЕНИЯ ХОДА ---
@@ -245,6 +302,86 @@
 </div>
 
 <style>
+    .victory-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.9); z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+        color: #ffd700; font-family: 'Georgia', serif;
+    }
+    .victory-box {
+        background: #fdf5e6; border: 8px double #8b4513; padding: 40px;
+        text-align: center; border-radius: 15px; box-shadow: 0 0 100px #ffd700;
+        color: #4a2c2a; position: relative; z-index: 10001;
+    }
+    .victory-title { font-size: 4rem; text-shadow: 2px 2px #fff; color: #8b4513; }
+    .winner-name { font-size: 2.5rem; font-weight: bold; margin: 20px 0; color: #b8860b; }
+    .victory-hr { border-color: #d2b48c; margin: 20px 0; }
+
+    /* Анимация падающих монет */
+    .falling-coin {
+        position: absolute; top: -50px;
+        animation: fall linear 3s infinite;
+        pointer-events: none;
+    }
+    @@keyframes fall {
+        to { transform: translateY(110vh) rotate(360deg); }
+    }
+
+    .victory-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        animation: fadeIn 1s;
+    }
+    .victory-box {
+        background: #fdf5e6; border: 10px solid #ffd700; padding: 50px;
+        text-align: center; border-radius: 20px; box-shadow: 0 0 50px #ffd700;
+    }
+
+    /* Контейнер инвентаря: теперь карты переносятся на новую строку */
+    #myInventory {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 15px;
+        justify-content: flex-start;
+        max-height: 400px; /* Ограничим высоту, если карт станет ОЧЕНЬ много */
+        overflow-y: auto;
+    }
+
+    /* Исправляем рубашку карты */
+    .card-back {
+        background: #5d2e0a url('https://www.transparenttextures.com');
+        color: #ffd700;
+        padding: 10px;
+        font-size: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between; /* Распределяем текст, чтобы не слипался */
+        align-items: center;
+        text-align: center;
+        border: 2px solid #ffd700;
+        transform: rotateY(180deg);
+        box-sizing: border-box; /* Чтобы padding не раздувал карту */
+    }
+
+    /* Текст описания внутри рубашки */
+    .card-back p {
+        margin: 5px 0;
+        line-height: 1.2;
+        overflow-y: auto; /* Если текст СЛИШКОМ длинный, появится микро-скролл */
+        width: 100%;
+        word-wrap: break-word;
+    }
+
+    /* Увеличим немного контейнер для читаемости */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 110px;  /* Чуть шире */
+        height: 150px; /* Чуть выше */
+        margin: 5px;
+    }
+
     /* Контейнер для картинки в маленькой карте */
     .img-container-mini {
         width: 90%;
