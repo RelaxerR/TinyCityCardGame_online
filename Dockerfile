@@ -1,11 +1,12 @@
-FROM ://mcr.microsoft.com AS base
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 WORKDIR /app
 EXPOSE 5040
 
-# Указываем приложению слушать нужный порт
+# Принудительно заставляем приложение слушать 5040 внутри контейнера
 ENV ASPNETCORE_URLS=http://+:5040
 
-FROM ://mcr.microsoft.com AS build
+# Стадия сборки
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG configuration=Release
 WORKDIR /src
 
