@@ -11,8 +11,8 @@ ARG configuration=Release
 WORKDIR /src
 
 # Копируем .csproj из подпапки в корень /src внутри докера
-COPY ["TinyCityCardGame_online/TinyCityCardGame_online.csproj", "TinyCityCardGame_online/"]
-RUN dotnet restore "TinyCityCardGame_online/TinyCityCardGame_online.csproj"
+COPY ["TinyCityCardGame_online.csproj", "./"]
+RUN dotnet restore "TinyCityCardGame_online.csproj"
 
 # Копируем всё содержимое корня (включая все подпапки)
 COPY . .
