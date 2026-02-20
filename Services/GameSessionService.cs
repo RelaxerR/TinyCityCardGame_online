@@ -45,17 +45,39 @@ public class GameSessionService
 
         // 3. Наполняем колоду (по 10 карт каждого типа)
         var baseCards = new List<Card> {
-            new Card { Name = "Пшеница", Color = CardColor.Blue, Cost = 1, Reward = 1, Icon = "🌾" },
-            new Card { Name = "Лес", Color = CardColor.Gold, Cost = 2, Reward = 2, Icon = "🌲" },
-            new Card { Name = "Рынок", Color = CardColor.Red, Cost = 3, Reward = 3, Icon = "⚖️" },
-            new Card { Name = "Шахта", Color = CardColor.Purple, Cost = 6, Reward = 5, Icon = "⛏️" }
+            new Card { 
+                Name = "Пшеница", Color = CardColor.Blue, 
+                Effect = "GETALL 1", // Все получают по 1
+                Cost = 1, Reward = 1, Icon = "🌾", Description = "Урожай для всех" 
+            },
+            new Card { 
+                Name = "Лесопилка", Color = CardColor.Gold, 
+                Effect = "GET 3", // Только ты получаешь 3
+                Cost = 3, Reward = 3, Icon = "🌲", Description = "Личный доход" 
+            },
+            new Card { 
+                Name = "Налог", Color = CardColor.Red, 
+                Effect = "STEAL_MONEY ALL 2", // Украсть у всех по 2
+                Cost = 5, Reward = 2, Icon = "📜", Description = "Сбор податей" 
+            },
+            new Card { 
+                Name = "Вор", Color = CardColor.Purple, 
+                Effect = "STEAL_CARD RANDOM", // Украсть карту
+                Cost = 8, Reward = 0, Icon = "🥷", Description = "Забирает чужое" 
+            }
         };
 
         foreach(var bc in baseCards) {
             for(int i = 0; i < 10; i++) { 
                 state.Deck.Add(new Card { 
                     Id = Guid.NewGuid().GetHashCode(), 
-                    Name = bc.Name, Color = bc.Color, Cost = bc.Cost, Reward = bc.Reward, Icon = bc.Icon 
+                    Name = bc.Name, 
+                    Color = bc.Color,
+                    Effect = bc.Effect,
+                    Cost = bc.Cost,
+                    Reward = bc.Reward,
+                    Icon = bc.Icon,
+                    Description = bc.Description
                 });
             }
         }

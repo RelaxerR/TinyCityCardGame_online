@@ -8,7 +8,7 @@
     document.addEventListener("DOMContentLoaded", () => {
         // 1. Инициализация через общий коннектор
         GameApp.start(() => {
-            console.log("Соединение установлено. Запрашиваю данные игры...");
+            console.log("Игра подключена. Запрашиваю состояние стола...");
             GameApp.connection.invoke("InitGameView", GameApp.roomCode);
         });
 
@@ -19,20 +19,13 @@
 
         // 3. Слушатель финала
         GameApp.connection.on("GameOver", (winnerName) => {
-            showTurnAlert("🎉 ПОБЕДА! " + winnerName.toUpperCase() + " ПРАВИТ ЭТИМИ ЗЕМЛЯМИ!");
+            showTurnAlert("👑 ТРИУМФ! " + winnerName.toUpperCase() + " НАБРАЛ 100 МОНЕТ!");
             setTimeout(() => { window.location.href = "/"; }, 5000);
         });
 
-        GameApp.connection.on("PlayerDisconnected", (message) => {
-            // Используем нашу функцию уведомлений
-            showTurnAlert("⚠️ " + message);
-
-            // Можно также пометить игрока в списке как "Offline"
-            // Для этого нужно будет обновить данные через сервер
-        });
-
+        // 4. Сообщения о кражах и событиях
         GameApp.connection.on("ShowMessage", (msg) => {
-            showTurnAlert(msg); // Используем наше золотое уведомление
+            showTurnAlert(msg);
         });
     });
 
@@ -40,20 +33,22 @@
         const myName = GameApp.userName;
         const currentPlayerName = data.currentPlayer;
         const isMyTurn = (myName === currentPlayerName);
-        const activeColorStr = data.activeColor.toLowerCase();
+        
+        // Приведение цвета к строке для надежного сравнения
+        const activeColorStr = String(data.activeColor).toLowerCase();
         const myData = data.players.find(p => p.name === myName);
-
-        // --- УВЕДОМЛЕНИЕ О ХОДЕ ---
-        if (isMyTurn && lastActivePlayer !== myName) {
-            showTurnAlert("ВАШ ХОД, ПОСЕЛЕНЕЦ!");
-        }
-        lastActivePlayer = currentPlayerName;
 
         // --- ИНФОРМАЦИЯ О РАУНДЕ ---
         const roundElem = document.getElementById("roundNum");
-        if(roundElem) roundElem.innerText = data.roundNumber || 1;
+        if (roundElem) roundElem.innerText = data.roundNumber || 1;
 
-        // --- СПИСОК ИГРОКОВ ---
+        // --- УВЕДОМЛЕНИЕ О ХОДЕ ---
+        if (isMyTurn && lastActivePlayer !== myName) {
+            showTurnAlert("🏰 ВАШ ХОД, ПОСЕЛЕНЕЦ!");
+        }
+        lastActivePlayer = currentPlayerName;
+
+        // --- СПИСОК ИГРОКОВ (ВЫ) ---
         const playersDiv = document.getElementById("playersList");
         playersDiv.innerHTML = data.players.map(p => {
             const isTurn = p.name === currentPlayerName;
@@ -66,16 +61,14 @@
 
         // --- ИНДИКАТОР ФАЗЫ ---
         const colorBox = document.getElementById("currentPhaseColor");
-        colorBox.className = "color-indicator " + activeColorStr;
+        if (colorBox) colorBox.className = "color-indicator " + activeColorStr;
 
         // --- РЫНОК (С анимацией пополнения) ---
         const marketDiv = document.getElementById("marketCards");
         const isReplenishing = data.market.length > previousMarketCount;
 
         marketDiv.innerHTML = data.market.map((card, index) => {
-            // Условие покупки: мой ход, ЕЩЕ НЕ ПОКУПАЛ, хватает денег
             const canAfford = isMyTurn && !myData.hasBoughtThisTurn && myData.coins >= card.cost;
-            // Анимация добавляется только новым картам в конце круга
             const animClass = (isReplenishing && index >= previousMarketCount) ? 'market-card-anim' : '';
             
             return `
@@ -84,50 +77,41 @@
                 <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
                 <div class="card-body">
                     <div style="font-size: 2rem">${card.icon}</div>
-                    <div style="font-size: 0.8rem">Доход: ${card.reward}💰</div>
+                    <div style="font-size: 0.8rem">Цена: ${card.cost}💰</div>
                 </div>
-                <div class="card-footer">Цена: ${card.cost}💰</div>
+                <div class="card-footer">${card.description || 'Ресурс'}</div>
             </div>`;
         }).join('');
         
         previousMarketCount = data.market.length;
 
-        // --- ИНВЕНТАРЬ (Карты с Flip-эффектом) ---
+        // --- ИНВЕНТАРЬ (Flip-эффект и Активация) ---
         if (myData) {
             document.getElementById("myCoins").innerText = myData.coins;
             const inventoryDiv = document.getElementById("myInventory");
-
-            // ВАЖНО: убедимся, что цвет — это строка в нижнем регистре для сравнения
-            const serverActiveColor = String(data.activeColor).toLowerCase();
-
+            
             inventoryDiv.innerHTML = myData.inventory.map(c => {
                 const cardColor = String(c.color).toLowerCase();
-                const serverActiveColor = String(data.activeColor).toLowerCase();
-
-                const colorMatches = (cardColor === serverActiveColor);
-                const canActivate = colorMatches && isMyTurn && !c.isUsed;
-
+                const isRightPhase = (cardColor === activeColorStr);
+                const canActivate = isRightPhase && isMyTurn && !c.isUsed;
                 const usedClass = c.isUsed ? "card-used" : "";
-                const glowClass = canActivate ? "active-card-glow" : "";
-
+                
                 return `
-                    <div class="card-mini-container ${canActivate ? 'clickable-card' : ''}" 
-                         onclick="useCard(${c.id}, ${canActivate})">
-                        <div class="card-mini-inner">
-                            <!-- Лицо карты -->
-                            <div class="card-front ${cardColor} ${glowClass} ${usedClass}">
-                                 <div style="font-size: 2rem">${c.icon}</div>
-                                 <div style="font-size: 0.7rem">${c.name}</div>
-                            </div>
-                            <!-- Рубашка -->
-                            <div class="card-back">
-                                <strong>${c.name}</strong>
-                                <p style="font-size: 10px">${c.description || 'Ресурс'}</p>
-                                <hr style="margin: 2px 0; border-color: #ffd700">
-                                <span style="color: #ffd700; font-weight: bold;">+${c.reward}💰</span>
-                            </div>
+                <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
+                     onclick="useCard(${c.id}, ${canActivate}, event)">
+                    <div class="card-mini-inner">
+                        <div class="card-front ${cardColor} ${canActivate ? 'active-card-glow' : ''} ${usedClass}">
+                             <div style="font-size: 2rem">${c.icon}</div>
+                             <div style="font-size: 0.7rem">${c.name}</div>
                         </div>
-                    </div>`;
+                        <div class="card-back">
+                            <strong>${c.name}</strong>
+                            <p style="font-size: 10px; margin: 5px 0;">${c.description || 'Эффект карты'}</p>
+                            <hr style="margin: 2px 0; border-color: #ffd700">
+                            <span style="color: #ffd700; font-weight: bold;">${c.effect}</span>
+                        </div>
+                    </div>
+                </div>`;
             }).join('');
         }
 
@@ -136,7 +120,7 @@
         if(endBtn) endBtn.disabled = !isMyTurn;
     }
 
-    // --- ФУНКЦИИ ВЫЗОВА HUB ---
+    // --- ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ ---
 
     function buyCard(cardId, canAfford) {
         if (!canAfford) return;
@@ -144,14 +128,20 @@
             .catch(err => console.error("Ошибка покупки:", err));
     }
 
-    function useCard(cardId, canActivate) {
-        console.log("Пытаюсь активировать карту с ID:", cardId, "Доступность:", canActivate);
-        if (!canActivate) {
-            console.warn("Активация отклонена клиентом");
-            return;
-        }
+    function useCard(cardId, canActivate, event) {
+        if (!canActivate) return;
+
+        // Анимация вылетающей монетки
+        const coin = document.createElement("div");
+        coin.className = "coin-anim";
+        coin.innerText = "+💰";
+        coin.style.left = event.pageX + "px";
+        coin.style.top = event.pageY + "px";
+        document.body.appendChild(coin);
+        setTimeout(() => coin.remove(), 1000);
+
         GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId)
-            .catch(err => console.error("Ошибка SignalR:", err));
+            .catch(err => console.error("Ошибка активации:", err));
     }
 
     function finishTurn() {
@@ -169,6 +159,7 @@
 </script>
 
 <div id="turn-alert"></div>
+<div id="game-log" class="log-box"></div>
 <div class="game-board">
     <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
     <div class="top-bar">
@@ -215,6 +206,28 @@
 </div>
 
 <style>
+    /* Карта, которая не совпадает с текущим цветом фазы */
+    .card-mini-container.wrong-phase {
+        filter: sepia(0.8) brightness(0.8);
+        opacity: 0.6;
+    }
+    /* Подсказка, что монета выдана */
+    .income-notif {
+        color: #2ecc71;
+        font-weight: bold;
+        animation: fadeUp 2s forwards;
+    }
+
+    @@keyframes coin-fly {
+        0% { transform: translateY(0); opacity: 1; }
+        100% { transform: translateY(-50px); opacity: 0; }
+    }
+    .coin-anim {
+        position: absolute; color: #ffd700; font-weight: bold;
+        font-size: 1.5rem; pointer-events: none;
+        animation: coin-fly 1s forwards; z-index: 2000;
+    }
+
     .card-header.gold, .card-front.gold { background: #f1c40f; color: #000; }
     .card-header.blue, .card-front.blue { background: #3498db; color: #fff; }
     .card-header.red, .card-front.red { background: #e74c3c; color: #fff; }
