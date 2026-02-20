@@ -57,42 +57,51 @@ namespace TinyCityCardGame_online.Hubs
             var playerName = state.TurnOrder[state.CurrentTurnIndex];
             var player = state.Players.First(p => p.Name == playerName);
     
+            // ВАЖНО: Ищем карту именно по Id в инвентаре текущего игрока
             var card = player.Inventory.FirstOrDefault(c => c.Id == cardId);
 
-            // Добавляем проверку: карта НЕ должна быть использована (IsUsed == false)
             if (card != null && card.Color == state.ActiveColor && !card.IsUsed)
             {
                 player.Coins += card.Reward;
-                card.IsUsed = true; // ПОМЕЧАЕМ КАК ИСПОЛЬЗОВАННУЮ
+                card.IsUsed = true; 
 
-                // Проверка победы (если нужно сразу)
+                // Проверка на победу
                 if (player.Coins >= 100) {
                     await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
                 }
 
                 await BroadcastUpdate(roomCode, state);
             }
+            else {
+                // Если карта не найдена или условия не совпали
+                System.Diagnostics.Debug.WriteLine($"Ошибка активации: CardID {cardId}, Found: {card != null}");
+            }
         }
 
         public async Task EndTurn(string roomCode)
         {
             var state = _sessionService.GetGameState(roomCode);
-            if (state == null) return;
+            var currentPlayer = state.Players.First(p => p.Name == state.TurnOrder[state.CurrentTurnIndex]);
+    
+            // Сброс флагов текущего игрока
+            currentPlayer.HasBoughtThisTurn = false;
+            currentPlayer.Inventory.ForEach(c => c.IsUsed = false);
 
-            // ПЕРЕД переходом хода сбрасываем флаги активации у ВСЕХ игроков 
-            // (или только у текущего, если правила позволяют активировать только в свой ход)
-            foreach (var p in state.Players)
-            {
-                p.Inventory.ForEach(c => c.IsUsed = false);
-            }
-
-            // Смена хода
             state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
 
-            // Если круг замкнулся — меняем фазу
+            // ЕСЛИ КРУГ ЗАВЕРШИЛСЯ (все походили)
             if (state.CurrentTurnIndex == 0)
             {
+                state.RoundNumber++;
                 state.ActiveColor = (CardColor)new Random().Next(0, 4);
+        
+                // ЗАПОЛНЯЕМ ПУСТЫЕ МЕСТА НА РЫНКЕ
+                int targetSize = state.Players.Count + 1;
+                while (state.Market.Count < targetSize && state.Deck.Any())
+                {
+                    state.Market.Add(state.Deck[0]);
+                    state.Deck.RemoveAt(0);
+                }
             }
 
             await BroadcastUpdate(roomCode, state);
@@ -113,28 +122,21 @@ namespace TinyCityCardGame_online.Hubs
         public async Task PlayerClickCard(string roomCode, int cardId)
         {
             var state = _sessionService.GetGameState(roomCode);
-            var currentPlayerName = state.TurnOrder[state.CurrentTurnIndex];
-            var player = state.Players.First(p => p.Name == currentPlayerName);
-            var card = state.Market.FirstOrDefault(c => c.Id == cardId);
+            var player = state.Players.First(p => p.Name == state.TurnOrder[state.CurrentTurnIndex]);
+    
+            // ПРОВЕРКА: Игрок еще не покупал в этом ходу и у него хватает денег
+            if (player.HasBoughtThisTurn) return; 
 
-            // 1. ПРОВЕРКА ДЕНЕГ: Покупка происходит ТОЛЬКО если хватает золота
+            var card = state.Market.FirstOrDefault(c => c.Id == cardId);
             if (card != null && player.Coins >= card.Cost)
             {
                 player.Coins -= card.Cost;
+                player.HasBoughtThisTurn = true; // Блокируем дальнейшие покупки
                 player.Inventory.Add(card);
-                state.Market.Remove(card);
+                state.Market.Remove(card); // На рынке остается "дырка"
 
-                if (state.Deck.Any())
-                {
-                    var nextCard = state.Deck[0];
-                    state.Market.Add(nextCard);
-                    state.Deck.RemoveAt(0);
-                }
-        
-                // Рассылаем обновление сразу после удачной покупки
                 await BroadcastUpdate(roomCode, state);
             }
-            // Если денег не хватает — просто ничего не делаем, игрок может нажать другую карту или завершить ход
         }
     }
 }

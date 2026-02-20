@@ -76,24 +76,3 @@ public class GameSessionService
         return state;
     }
 }
-
-public class GameState
-{
-    public string RoomCode { get; set; }
-    public List<Player> Players { get; set; } = new();
-    public List<Card> Market { get; set; } = new();
-    public List<Card> Deck { get; set; } = new();
-    public CardColor ActiveColor { get; set; }
-    public int CurrentPlayerIndex { get; set; } = 0;
-    
-    public List<string> TurnOrder { get; set; } = new(); // Список имен по порядку хода
-    public int CurrentTurnIndex { get; set; } = 0;
-}
-
-public class Player
-{
-    public string Name { get; set; }
-    public string ConnectionId { get; set; }
-    public int Coins { get; set; } = 3;
-    public List<Card> Inventory { get; set; } = new();
-}
