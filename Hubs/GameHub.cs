@@ -63,30 +63,68 @@ namespace TinyCityCardGame_online.Hubs
             var state = _sessionService.GetGameState(roomCode);
             if (state == null) return;
 
-            var playerName = state.TurnOrder[state.CurrentTurnIndex];
-            var player = state.Players.First(p => p.Name == playerName);
-    
-            // ВАЖНО: Ищем карту именно по Id в инвентаре текущего игрока
-            var card = player.Inventory.FirstOrDefault(c => c.Id == cardId);
+            var currentPlayer = state.Players.First(p => p.Name == state.TurnOrder[state.CurrentTurnIndex]);
+            var card = currentPlayer.Inventory.FirstOrDefault(c => c.Id == cardId);
 
-            if (card != null && card.Color == state.ActiveColor && !card.IsUsed)
+            // Проверка: цвет карты совпадает с цветом раунда и она еще не "погасла"
+            if (card == null || card.Color != state.ActiveColor || card.IsUsed) return;
+
+            switch (card.Color)
             {
-                player.Coins += card.Reward;
-                card.IsUsed = true; 
+                case CardColor.Gold: // Золотые: Личный доход
+                    currentPlayer.Coins += card.Reward;
+                    card.IsUsed = true;
+                    break;
 
-                // Проверка на победу
-                if (player.Coins >= 100) {
-                    await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
-                }
+                case CardColor.Red: // Красные: Воруют монеты у ВСЕХ остальных
+                    foreach (var other in state.Players.Where(p => p.Name != currentPlayer.Name))
+                    {
+                        int stolen = Math.Min(other.Coins, card.Reward);
+                        other.Coins -= stolen;
+                        currentPlayer.Coins += stolen;
+                    }
+                    card.IsUsed = true;
+                    break;
 
+                case CardColor.Blue: // Синие: Цепная реакция (все игроки получают доход)
+                    foreach (var p in state.Players)
+                    {
+                        var blueCards = p.Inventory.Where(c => c.Color == CardColor.Blue && !c.IsUsed).ToList();
+                        foreach (var bc in blueCards)
+                        {
+                            p.Coins += bc.Reward;
+                            bc.IsUsed = true; // "Гаснут" у всех, кто получил доход
+                        }
+                    }
+                    break;
+
+                case CardColor.Purple: // Фиолетовые: Хаос (кража случайной карты)
+                    var victims = state.Players.Where(p => p.Name != currentPlayer.Name && p.Inventory.Any()).ToList();
+                    if (victims.Any())
+                    {
+                        var target = victims[new Random().Next(victims.Count)];
+                        var stolenCard = target.Inventory[new Random().Next(target.Inventory.Count)];
+                        
+                        target.Inventory.Remove(stolenCard);
+                        currentPlayer.Inventory.Add(stolenCard);
+                        card.IsUsed = true;
+                        
+                        await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {currentPlayer.Name} отобрал '{stolenCard.Name}' у {target.Name}!");
+                    }
+                    break;
+            }
+
+            // Проверка на победу (кто первый набрал 100)
+            if (currentPlayer.Coins >= 100)
+            {
+                await Clients.Group(roomCode).SendAsync("GameOver", currentPlayer.Name);
+            }
+            else
+            {
                 await BroadcastUpdate(roomCode, state);
             }
-            else {
-                // Если карта не найдена или условия не совпали
-                System.Diagnostics.Debug.WriteLine($"Ошибка активации: CardID {cardId}, Found: {card != null}");
-            }
         }
-
+        
         public async Task EndTurn(string roomCode)
         {
             var state = _sessionService.GetGameState(roomCode);

@@ -46,7 +46,7 @@ public class GameSessionService
         // 3. Наполняем колоду (по 10 карт каждого типа)
         var baseCards = new List<Card> {
             new Card { Name = "Пшеница", Color = CardColor.Blue, Cost = 1, Reward = 1, Icon = "🌾" },
-            new Card { Name = "Лес", Color = CardColor.Green, Cost = 2, Reward = 2, Icon = "🌲" },
+            new Card { Name = "Лес", Color = CardColor.Gold, Cost = 2, Reward = 2, Icon = "🌲" },
             new Card { Name = "Рынок", Color = CardColor.Red, Cost = 3, Reward = 3, Icon = "⚖️" },
             new Card { Name = "Шахта", Color = CardColor.Purple, Cost = 6, Reward = 5, Icon = "⛏️" }
         };

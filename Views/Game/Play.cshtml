@@ -30,6 +30,10 @@
             // Можно также пометить игрока в списке как "Offline"
             // Для этого нужно будет обновить данные через сервер
         });
+
+        GameApp.connection.on("ShowMessage", (msg) => {
+            showTurnAlert(msg); // Используем наше золотое уведомление
+        });
     });
 
     function renderGame(data) {
@@ -211,6 +215,11 @@
 </div>
 
 <style>
+    .card-header.gold, .card-front.gold { background: #f1c40f; color: #000; }
+    .card-header.blue, .card-front.blue { background: #3498db; color: #fff; }
+    .card-header.red, .card-front.red { background: #e74c3c; color: #fff; }
+    .card-header.purple, .card-front.purple { background: #9b59b6; color: #fff; }
+
     .card-mini-container {
         perspective: 1000px;
         width: 100px; height: 140px;
