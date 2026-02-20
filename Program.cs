@@ -8,6 +8,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddControllersWithViews();
+builder.Services.AddSingleton<GameSessionService>();
 
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(options => {

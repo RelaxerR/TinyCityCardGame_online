@@ -18,6 +18,8 @@ public class GameSessionService
 
     public GameState GetGameState(string roomCode) =>
         _activeGames.ContainsKey(roomCode) ? _activeGames[roomCode] : null;
+    
+    public bool RoomExists(string code) => _rooms.ContainsKey(code);
 
     public GameState CreateGame(string roomCode)
     {

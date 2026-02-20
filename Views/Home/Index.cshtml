@@ -4,22 +4,52 @@
     <h1 class="game-title">Catan-Koro</h1>
     
     <div class="scroll-box">
+        <!-- Вывод ошибок (если комната не найдена или имя занято) -->
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert-wood">⚠️ @TempData["Error"]</div>
+        }
+
         <form asp-action="CreateLobby" method="post">
-            <input asp-for="PlayerName" placeholder="Ваше имя, поселенец..." class="custom-input" required />
+            <input asp-for="PlayerName" id="playerName" placeholder="Ваше имя, поселенец..." class="custom-input" required autocomplete="off" />
             <br />
-            <button type="submit" class="btn-wood">Основать колонию</button>
+            <button type="submit" id="btnCreate" class="btn-wood" disabled>Основать колонию</button>
         </form>
 
         <hr class="divider" />
 
         <form asp-action="JoinLobby" method="post">
-            <input asp-for="RoomCode" placeholder="Код порта..." class="custom-input" />
-            <button type="submit" class="btn-stone">Войти в гавань</button>
+            <!-- Скрытое поле для имени, чтобы передать его вместе с кодом -->
+            <input type="hidden" name="PlayerName" class="name-mirror" />
+            <input asp-for="RoomCode" placeholder="Код порта..." class="custom-input" autocomplete="off" />
+            <button type="submit" id="btnJoin" class="btn-stone" disabled>Войти в гавань</button>
         </form>
     </div>
 </div>
 
+<script>
+    const nameInput = document.getElementById('playerName');
+    const btnCreate = document.getElementById('btnCreate');
+    const btnJoin = document.getElementById('btnJoin');
+    const nameMirrors = document.querySelectorAll('.name-mirror');
+
+    nameInput.addEventListener('input', function() {
+        const val = this.value.trim();
+        const isDisabled = val.length < 2; // Минимум 2 символа
+        
+        btnCreate.disabled = isDisabled;
+        btnJoin.disabled = isDisabled;
+
+        // Копируем имя во вторую форму
+        nameMirrors.forEach(m => m.value = val);
+    });
+</script>
+
 <style>
+    /* Стиль для ошибки в духе игры */
+    .alert-wood { background: #ffebcd; color: #8b0000; border: 2px solid #8b4513; padding: 10px; margin-bottom: 15px; border-radius: 5px; font-weight: bold; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+    
     body { background-color: #e4d5b7; font-family: 'Georgia', serif; }
     .game-title { color: #8b4513; font-size: 3rem; text-shadow: 2px 2px #fff; margin-top: 50px; }
     .scroll-box { 
