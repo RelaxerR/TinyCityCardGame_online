@@ -212,8 +212,9 @@ namespace TinyCityCardGame_online.Hubs
                 activeColor = state.ActiveColor.ToString(),
                 market = state.Market,
                 currentPlayer = state.TurnOrder[state.CurrentTurnIndex],
-                players = state.Players, // <--- САМОЕ ВАЖНОЕ: тут новые балансы!
-                roundNumber = state.RoundNumber
+                players = state.Players,
+                roundNumber = state.RoundNumber,
+                deckCount = state.Deck.Count 
             });
         }
 
