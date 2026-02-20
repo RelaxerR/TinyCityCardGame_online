@@ -138,7 +138,7 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
                         </div>
                         <div class="card-back">
                             <strong style="color: #ffd700; font-size: 0.8rem; text-transform: uppercase;">${c.name}</strong>
-                            <p style="font-size: 0.7rem; margin: 10px 0;">${c.description}</p>
+                            <p style="font-size: 0.7rem; margin: 10px 0;">${c.narrative}</p>
                             <div class="dsl-info">⚡ ${c.effect}</div>
                         </div>
                     </div>

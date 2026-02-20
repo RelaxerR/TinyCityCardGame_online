@@ -14,7 +14,7 @@ public class GameSessionService
     public GameSessionService(IOptions<GameSettings> settings, CardLoader loader) {
         _settings = settings.Value;
         // Загружаем эталонный список карт один раз при старте
-        _baseCards = loader.LoadCardsFromExcel("cards.xlsx");
+        _baseCards = loader.LoadCardsFromExcel("Cards.xlsx");
     }
     
     public void AddPlayer(string roomCode, string userName)
@@ -89,6 +89,7 @@ public class GameSessionService
                         Reward = bc.Reward,
                         Icon = bc.Icon,
                         Description = bc.Description,
+                        Narrative = bc.Narrative,
                         Weight = bc.Weight,
                         IsUsed = false
                     });
