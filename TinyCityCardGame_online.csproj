@@ -14,4 +14,10 @@
     <Folder Include="wwwroot\images\cards\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Cards.xlsx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
