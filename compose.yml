@@ -1,0 +1,7 @@
+services:
+  tiny-city:
+    build: .
+    container_name: tiny-city-container
+    restart: always
+    ports:
+      - "5040:5040"
