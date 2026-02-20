@@ -1,0 +1,624 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+<script src="/js/game-connector.js"></script>
+
+<script>
+    let lastActivePlayer = "";
+    let previousMarketCount = 0;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        // 1. Инициализация через общий коннектор
+        GameApp.start(() => {
+            console.log("Игра подключена. Запрашиваю состояние стола...");
+            GameApp.connection.invoke("InitGameView", GameApp.roomCode);
+        });
+
+        // 2. Слушатель обновлений стола
+        GameApp.connection.on("UpdateTable", (data) => {
+            renderGame(data);
+        });
+
+        // 3. Слушатель финала
+        GameApp.connection.on("GameOver", (winnerName) => {
+            showTurnAlert("👑 ТРИУМФ! " + winnerName.toUpperCase() + " НАБРАЛ 100 МОНЕТ!");
+            setTimeout(() => { window.location.href = "/"; }, 5000);
+        });
+
+        // 4. Сообщения о кражах и событиях
+        GameApp.connection.on("ShowMessage", (msg, type) => {
+            addToLog(msg, type); // Добавляем в свиток
+            showTurnAlert(msg);  // И показываем на экране на секунду
+        });
+    });
+
+    function renderGame(data) {
+        const myName = GameApp.userName;
+        const currentPlayerName = data.currentPlayer;
+        const isMyTurn = (myName === currentPlayerName);
+        
+        // Приведение цвета к строке для надежного сравнения
+        const activeColorStr = String(data.activeColor).toLowerCase();
+        const myData = data.players.find(p => p.name === myName);
+
+        // --- ИНФОРМАЦИЯ О РАУНДЕ ---
+        const roundElem = document.getElementById("roundNum");
+        if (roundElem) roundElem.innerText = data.roundNumber || 1;
+
+        // --- УВЕДОМЛЕНИЕ О ХОДЕ ---
+        if (isMyTurn && lastActivePlayer !== myName) {
+            showTurnAlert("🏰 ВАШ ХОД, ПОСЕЛЕНЕЦ!");
+        }
+        lastActivePlayer = currentPlayerName;
+
+        // --- СПИСОК ИГРОКОВ (ВЫ) ---
+        const playersDiv = document.getElementById("playersList");
+        playersDiv.innerHTML = data.players.map(p => {
+            const isTurn = p.name === currentPlayerName;
+            return `
+            <div class="player-pill ${isTurn ? 'active-glow' : ''}">
+                ${p.name} ${p.name === myName ? '<strong>(Вы)</strong>' : ''}: 
+                <strong>${p.coins}💰</strong>
+            </div>`;
+        }).join('');
+
+        // --- ИНДИКАТОР ФАЗЫ ---
+        const colorBox = document.getElementById("currentPhaseColor");
+        if (colorBox) colorBox.className = "color-indicator " + activeColorStr;
+
+        // --- РЫНОК (С анимацией пополнения) ---
+        const marketDiv = document.getElementById("marketCards");
+        const isReplenishing = data.market.length > previousMarketCount;
+
+        marketDiv.innerHTML = data.market.map((card, index) => {
+            const canAfford = isMyTurn && !myData.hasBoughtThisTurn && myData.coins >= card.cost;
+            const animClass = (isReplenishing && index >= previousMarketCount) ? 'market-card-anim' : '';
+
+            // Формируем HTML для картинки
+            const cardImg = card.icon
+                ? `<img src="${card.icon}" class="card-illustration" alt="${card.name}">`
+                : `<div class="no-icon">🏰</div>`; // Заглушка, если картинки нет
+
+            return `
+                <div class="card-item ${animClass} ${canAfford ? 'can-afford' : 'disabled'}" 
+                     onclick="buyCard(${card.id}, ${canAfford})">
+                    <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
+                    <div class="card-body">
+                        <div class="img-container">
+                            ${cardImg}
+                        </div>
+                        <div class="card-price">Цена: ${card.cost}💰</div>
+                    </div>
+                    <div class="card-footer">${card.description || 'Ресурс'}</div>
+                </div>`;
+        }).join('');
+        
+        previousMarketCount = data.market.length;
+
+        // --- ИНВЕНТАРЬ (Flip-эффект и Активация) ---
+        if (myData) {
+            document.getElementById("myCoins").innerText = myData.coins;
+            const inventoryDiv = document.getElementById("myInventory");
+
+            inventoryDiv.innerHTML = myData.inventory.map(c => {
+                const cardColor = String(c.color).toLowerCase();
+                const serverActiveColor = String(data.activeColor).toLowerCase();
+
+                const isRightPhase = (cardColor === serverActiveColor);
+                const canActivate = isRightPhase && isMyTurn && !c.isUsed;
+                const usedClass = c.isUsed ? "card-used" : "";
+
+                // Формируем HTML для картинки в инвентаре
+                const cardImg = c.icon
+                    ? `<img src="${c.icon}" class="card-illustration-mini" alt="${c.name}">`
+                    : `<div class="no-icon-mini">🏰</div>`;
+
+                return `
+        <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
+             onclick="useCard(${c.id}, ${canActivate}, event)">
+            <div class="card-mini-inner">
+                <!-- ЛИЦО КАРТЫ -->
+                <div class="card-front ${cardColor} ${canActivate ? 'active-card-glow' : ''} ${usedClass}">
+                     <div class="img-container-mini">
+                        ${cardImg}
+                     </div>
+                     <div class="card-mini-name">${c.name}</div>
+                </div>
+                <!-- РУБАШКА С ОПИСАНИЕМ -->
+                <div class="card-back">
+                    <strong style="font-size: 0.8rem;">${c.name}</strong>
+                    <p style="font-size: 10px; margin: 2px 0;">${c.description || 'Эффект карты'}</p>
+                    <hr style="margin: 2px 0; border-color: #ffd700">
+                    <span style="color: #ffd700; font-weight: bold; font-size: 0.7rem;">${c.effect}</span>
+                </div>
+            </div>
+        </div>`;
+            }).join('');
+        }
+
+        // --- КНОПКА ЗАВЕРШЕНИЯ ХОДА ---
+        const endBtn = document.getElementById("endTurnBtn");
+        if(endBtn) endBtn.disabled = !isMyTurn;
+    }
+
+    // --- ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ ---
+
+    function buyCard(cardId, canAfford) {
+        if (!canAfford) return;
+        GameApp.connection.invoke("PlayerClickCard", GameApp.roomCode, cardId)
+            .catch(err => console.error("Ошибка покупки:", err));
+    }
+
+    function useCard(cardId, canActivate, event) {
+        if (!canActivate) return;
+
+        // Анимация вылетающей монетки
+        const coin = document.createElement("div");
+        coin.className = "coin-anim";
+        coin.innerText = "+💰";
+        coin.style.left = event.pageX + "px";
+        coin.style.top = event.pageY + "px";
+        document.body.appendChild(coin);
+        setTimeout(() => coin.remove(), 1000);
+
+        GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId)
+            .catch(err => console.error("Ошибка активации:", err));
+    }
+
+    function finishTurn() {
+        GameApp.connection.invoke("EndTurn", GameApp.roomCode)
+            .catch(err => console.error("Ошибка завершения хода:", err));
+    }
+
+    function showTurnAlert(text) {
+        const alertBox = document.getElementById("turn-alert");
+        if(!alertBox) return;
+        alertBox.innerText = text;
+        alertBox.style.display = "block";
+        setTimeout(() => { alertBox.style.display = "none"; }, 3000);
+    }
+
+    function addToLog(message, type = "") {
+        const logDiv = document.getElementById("gameLog");
+        const item = document.createElement("div");
+        item.className = `log-item ${type}`;
+
+        const now = new Date();
+        const timeStr = `[${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}] `;
+
+        item.innerHTML = `<span>${timeStr}${message}</span>`;
+        logDiv.appendChild(item);
+
+        // Автопрокрутка вниз (хотя flex-direction: column-reverse уже помогает)
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+</script>
+
+<div id="turn-alert"></div>
+<div class="log-container">
+    <div class="log-header">📜 ЛЕТОПИСЬ СОБЫТИЙ</div>
+    <div id="gameLog" class="log-content">
+        <div class="log-item">Добро пожаловать в гавань!</div>
+    </div>
+</div>
+<div class="game-board">
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
+    <div class="top-bar">
+        <div class="active-event">
+            <span>Активная фаза:</span>
+            <div id="currentPhaseColor" class="color-indicator blue"></div>
+        </div>
+        
+        <div class="turn-info">
+            <span class="round-badge">РАУНД: <strong id="roundNum">1</strong></span>
+        </div>
+        
+        <div class="players-status" id="playersList">
+            <!-- Сюда SignalR подставит игроков и их монеты -->
+            <div class="player-pill active">Игрок 1: 15💰</div>
+            <div class="player-pill">Игрок 2: 10💰</div>
+        </div>
+    </div>
+
+    <!-- РЫНОК: Колода + 5 открытых карт -->
+    <div class="market-zone">
+        <div class="deck-stack">
+            <div class="card-back-v">
+                <div class="deck-title">КОЛОДА</div>
+                <div class="deck-count">???</div>
+            </div>
+        </div>
+        <div class="open-market" id="marketCards">
+            <!-- Сюда влетают карты -->
+        </div>
+    </div>
+
+    <!-- РУКА ИГРОКА -->
+    <div class="player-hand-section">
+        <h3>Ваши владения</h3>
+        <div class="my-cards" id="myInventory">
+            <!-- Карты, которые уже куплены -->
+        </div>
+        <div class="player-stats">
+            <span class="coin-count">Ваше золото: <strong id="myCoins">3</strong> 💰</span>
+            <button id="endTurnBtn" class="btn-stone" onclick="finishTurn()">Завершить ход</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Контейнер для картинки в маленькой карте */
+    .img-container-mini {
+        width: 90%;
+        height: 60px; /* Чуть меньше, чем на рынке */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: rgba(255,255,255,0.2);
+        border-radius: 4px;
+        margin-top: 5px;
+    }
+
+    .card-illustration-mini {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    .card-mini-name {
+        font-size: 0.7rem;
+        font-weight: bold;
+        margin-top: 2px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        width: 90%;
+    }
+
+    /* Заглушка для инвентаря */
+    .no-icon-mini {
+        font-size: 1.5rem;
+    }
+
+    /* Контейнер для картинки внутри карты */
+    .img-container {
+        width: 100%;
+        height: 80px; /* Фиксированная высота для иллюстрации */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        margin-bottom: 5px;
+        background: rgba(0,0,0,0.05); /* Легкая тень под картинкой */
+        border-radius: 4px;
+    }
+
+    /* Сама картинка */
+    .card-illustration {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain; /* Картинка впишется без искажений */
+        transition: transform 0.3s;
+    }
+
+    .card-item:hover .card-illustration {
+        transform: scale(1.1); /* Легкий зум при наведении */
+    }
+
+    .card-price {
+        font-weight: bold;
+        font-size: 0.9rem;
+        color: #4a2c2a;
+    }
+
+    .no-icon {
+        font-size: 2rem;
+        opacity: 0.5;
+    }
+
+    .card-illustration {
+        width: 80%;
+        height: 100px;
+        object-fit: contain; /* Чтобы картинка не растягивалась */
+        margin: 5px auto;
+        display: block;
+        border-radius: 5px;
+        background: rgba(0,0,0,0.05); /* Легкая подложка */
+    }
+
+    .log-container {
+        position: fixed; right: 20px; top: 150px;
+        width: 250px; background: rgba(253, 245, 230, 0.9);
+        border: 3px solid #8b4513; border-radius: 10px;
+        box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+    }
+    .log-header {
+        background: #8b4513; color: #ffd700; padding: 5px;
+        text-align: center; font-weight: bold; font-size: 0.8rem;
+    }
+    .log-content {
+        max-height: 200px; overflow-y: auto; padding: 10px;
+        display: flex; flex-direction: column-reverse; /* Новые сообщения сверху */
+    }
+    .log-item {
+        font-size: 0.85rem; border-bottom: 1px dashed #d2b48c; padding: 3px 0;
+        animation: fadeIn 0.5s ease;
+    }
+    .log-item.important { color: #8b0000; font-weight: bold; }
+    .log-item.gold { color: #b8860b; }
+    
+    /* Карта, которая не совпадает с текущим цветом фазы */
+    .card-mini-container.wrong-phase {
+        filter: sepia(0.8) brightness(0.8);
+        opacity: 0.6;
+    }
+    /* Подсказка, что монета выдана */
+    .income-notif {
+        color: #2ecc71;
+        font-weight: bold;
+        animation: fadeUp 2s forwards;
+    }
+
+    @@keyframes coin-fly {
+        0% { transform: translateY(0); opacity: 1; }
+        100% { transform: translateY(-50px); opacity: 0; }
+    }
+    .coin-anim {
+        position: absolute; color: #ffd700; font-weight: bold;
+        font-size: 1.5rem; pointer-events: none;
+        animation: coin-fly 1s forwards; z-index: 2000;
+    }
+
+    .card-header.gold, .card-front.gold { background: #f1c40f; color: #000; }
+    .card-header.blue, .card-front.blue { background: #3498db; color: #fff; }
+    .card-header.red, .card-front.red { background: #e74c3c; color: #fff; }
+    .card-header.purple, .card-front.purple { background: #9b59b6; color: #fff; }
+
+    .card-mini-container {
+        perspective: 1000px;
+        width: 100px; height: 140px;
+        margin: 10px;
+        cursor: default;
+        position: relative; /* Чтобы клик ловился точно тут */
+    }
+
+    .card-mini-container.clickable-card {
+        cursor: pointer !important;
+    }
+
+    .card-mini-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+        pointer-events: none; /* Отключаем клики внутри, чтобы ловил контейнер */
+    }
+
+    .card-mini-container:hover .card-mini-inner {
+        transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Важно: чтобы контейнер ловил клик, а внутренности не мешали */
+    .card-mini-container * {
+        pointer-events: none;
+    }
+    .card-mini-container {
+        pointer-events: all;
+    }
+
+    /* Анимация появления новых карт на рынке */
+    .market-card-anim {
+        animation: slideInFromDeck 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @@keyframes slideInFromDeck {
+        0% { transform: translate(-200px, -50px) rotate(-20deg); opacity: 0; }
+        100% { transform: translate(0, 0) rotate(0); opacity: 1; }
+    }
+
+    .round-badge {
+        background: #8b4513; color: #ffd700; padding: 5px 15px;
+        border-radius: 20px; border: 2px solid #ffd700;
+    }
+
+    .card-back-v {
+        width: 120px; height: 180px;
+        background: #5d2e0a;
+        border: 4px solid #8b4513;
+        border-radius: 10px;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        color: #ffd700; font-weight: bold;
+        box-shadow: 5px 5px 0 #3d1f07; /* Эффект пачки */
+    }
+    
+    .active-card-glow {
+        cursor: pointer;
+        animation: pulse 1.5s infinite;
+        border: 2px solid #ffd700 !important;
+        transform: scale(1.1);
+    }
+
+    @@keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+
+    .btn-stone {
+        background: #708090;
+        color: white;
+        padding: 10px 20px;
+        border: 3px solid #2f4f4f;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .btn-stone:hover { background: #4f666a; }
+
+    .card-used {
+        opacity: 0.4;
+        filter: grayscale(1);
+        transform: scale(0.9);
+        pointer-events: none; /* Чтобы нельзя было кликнуть повторно до обновления */
+        transition: all 0.3s ease;
+    }
+
+    .game-board { background: #d2b48c; height: 100vh; padding: 20px; display: flex; flex-direction: column; gap: 30px; }
+    
+    /* Стили панелей */
+    .top-bar { display: flex; justify-content: space-between; background: rgba(255,255,255,0.3); padding: 15px; border-radius: 10px; }
+    .color-indicator { width: 40px; height: 40px; border-radius: 50%; border: 3px solid #fff; display: inline-block; }
+    .blue { background: #3498db; } .green { background: #2ecc71; } 
+    .red { background: #e74c3c; } .purple { background: #9b59b6; }
+
+    /* Рынок */
+    .market-zone { display: flex; gap: 20px; justify-content: center; align-items: center; }
+    .open-market { display: flex; gap: 15px; background: rgba(0,0,0,0.1); padding: 20px; border-radius: 15px; }
+    
+    /* Карточка */
+    .card-item { 
+        width: 120px; height: 180px; background: #fffdf0; border: 4px solid #8b4513; 
+        border-radius: 10px; position: relative; cursor: pointer; transition: transform 0.2s;
+    }
+    .card-item:hover { transform: translateY(-10px); }
+    .card-header { height: 30px; color: white; text-align: center; font-weight: bold; }
+    
+    .card-back { 
+        width: 120px; height: 180px; background: #8b4513; color: white; 
+        display: flex; align-items: center; justify-content: center; border-radius: 10px; 
+    }
+
+    .player-hand-section { margin-top: auto; background: #f5f5dc; padding: 20px; border-radius: 20px 20px 0 0; border-top: 5px solid #a0522d; }
+    .my-cards { display: flex; gap: 10px; overflow-x: auto; }
+
+    .player-pill.active-glow {
+        border: 3px solid #ffd700;
+        box-shadow: 0 0 15px #ffd700;
+        transform: scale(1.1);
+        background: #8b4513;
+        color: white;
+    }
+    .card-item.clickable:hover { border-color: #ffd700; cursor: pointer; }
+    .card-item.disabled { opacity: 0.7; cursor: not-allowed; }
+
+    .active-glow {
+        background: #8b4513 !important;
+        color: #ffd700 !important;
+        box-shadow: 0 0 20px #ffd700;
+        border: 2px solid #ffd700;
+    }
+    .card-mini {
+        width: 40px; height: 60px; border-radius: 5px;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin-right: 5px; border: 1px solid #000; font-size: 1.5rem;
+    }
+    .card-item.disabled { filter: grayscale(0.5); opacity: 0.8; }
+    .card-footer { background: rgba(0,0,0,0.1); font-weight: bold; border-radius: 0 0 10px 10px; }
+
+    /* 1. Фон игрового стола */
+    .game-board {
+        background: url('https://img.freepik.com') center/cover no-repeat;
+        box-shadow: inset 0 0 200px rgba(0,0,0,0.5);
+    }
+
+    /* 2. Фон лицевой стороны карт (пергамент) */
+    .card-item, .card-front {
+        background: url('https://www.transparenttextures.com'), #fdf5e6;
+        border: 3px solid #8b4513;
+        border-radius: 8px;
+    }
+
+    /* 3. Эффект переворота для инвентаря */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 60px; height: 90px;
+    }
+
+    .card-mini-inner {
+        position: relative; width: 100%; height: 100%;
+        transition: transform 0.6s; transform-style: preserve-3d;
+    }
+
+    .card-mini-container:hover .card-mini-inner {
+        transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+        position: absolute; width: 100%; height: 100%;
+        backface-visibility: hidden; border-radius: 5px;
+    }
+
+    /* Рубашка карты в инвентаре */
+    .card-back {
+        background: #5d2e0a url('https://www.transparenttextures.com');
+        color: #ffd700; display: flex; align-items: center; justify-content: center;
+        border: 2px solid #ffd700; transform: rotateY(180deg);
+    }
+
+    /* Всплывающее предупреждение о ходе */
+    #turn-alert {
+        position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
+        background: rgba(139, 69, 19, 0.9); color: white; padding: 20px 40px;
+        border: 4px solid #ffd700; border-radius: 15px; z-index: 1000;
+        font-size: 2rem; display: none; pointer-events: none;
+    }
+
+    /* Увеличенный инвентарь */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 100px; height: 140px; /* Было 60x90 */
+        margin: 5px;
+    }
+
+    .card-back {
+        background: #5d2e0a;
+        color: #ffd700;
+        padding: 8px;
+        font-size: 11px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        border: 2px solid #ffd700;
+        transform: rotateY(180deg);
+    }
+
+    /* Подсветка доступных для покупки карт */
+    .card-item.can-afford {
+        box-shadow: 0 0 15px #2ecc71;
+        border-color: #2ecc71 !important;
+    }
+
+    /* Анимация появления новой карты */
+    @@keyframes card-fly-in {
+        0% { transform: scale(0) translateX(-200px); opacity: 0; }
+        100% { transform: scale(1) translateX(0); opacity: 1; }
+    }
+
+    .new-card-anim {
+        animation: card-fly-in 0.5s ease-out;
+    }
+
+    /* Кнопка "Завершить ход" активна только для текущего игрока */
+    .btn-stone:disabled {
+        filter: grayscale(1);
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+
+</style>
