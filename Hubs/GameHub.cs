@@ -120,24 +120,51 @@ namespace TinyCityCardGame_online.Hubs
                     await Clients.Group(roomCode).SendAsync("ShowMessage", $"Урожайный год! Все получили по {bonus}💰", "gold");
                     break;
 
-                case "STEAL_MONEY":
-                    int sAmt = int.Parse(parts[2]);
-                    var victims = state.Players.Where(p => p.Name != player.Name).ToList();
-                    foreach (var v in victims) {
-                        int stolen = Math.Min(v.Coins, sAmt);
-                        v.Coins -= stolen; player.Coins += stolen;
+                case "STEAL_MONEY": // Формат: STEAL_MONEY ALL 2 или STEAL_MONEY RANDOM 5
+                    if (parts.Length > 2) 
+                    {
+                        string targetMode = parts[1].ToUpper(); // ALL или RANDOM
+                        int amount = int.Parse(parts[2]);
+                        
+                        List<Player> victims = new List<Player>();
+                        var otherPlayers = state.Players.Where(p => p.Name != player.Name).ToList();
+
+                        if (targetMode == "ALL") {
+                            victims = otherPlayers;
+                        } else if (targetMode == "RANDOM" && otherPlayers.Any()) {
+                            victims.Add(otherPlayers[random.Next(otherPlayers.Count)]);
+                        }
+
+                        foreach (var v in victims) {
+                            int actuallyStolen = Math.Min(v.Coins, amount);
+                            v.Coins -= actuallyStolen;
+                            player.Coins += actuallyStolen;
+                            await Clients.Group(roomCode).SendAsync("ShowMessage", $"💸 {player.Name} украл {actuallyStolen}💰 у {v.Name}!", "important");
+                        }
                     }
-                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"⚔️ {player.Name} собрал дань с соседей по {sAmt}💰!", "important");
                     break;
 
-                case "STEAL_CARD":
-                    var targets = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
-                    if (targets.Any()) {
-                        var victim = targets[random.Next(targets.Count)];
-                        var stolen = victim.Inventory[random.Next(victim.Inventory.Count)];
-                        victim.Inventory.Remove(stolen);
-                        player.Inventory.Add(stolen);
-                        await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {victim.Name}!", "important");
+                case "STEAL_CARD": // Формат: STEAL_CARD ALL или STEAL_CARD RANDOM
+                    if (parts.Length > 1)
+                    {
+                        string targetMode = parts[1].ToUpper();
+                        var otherPlayers = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
+
+                        List<Player> victims = new List<Player>();
+                        if (targetMode == "ALL") {
+                            victims = otherPlayers;
+                        } else if (targetMode == "RANDOM" && otherPlayers.Any()) {
+                            victims.Add(otherPlayers[random.Next(otherPlayers.Count)]);
+                        }
+
+                        foreach (var v in victims) {
+                            if (v.Inventory.Any()) {
+                                var stolen = v.Inventory[random.Next(v.Inventory.Count)];
+                                v.Inventory.Remove(stolen);
+                                player.Inventory.Add(stolen);
+                                await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {v.Name}!", "important");
+                            }
+                        }
                     }
                     break;
 
