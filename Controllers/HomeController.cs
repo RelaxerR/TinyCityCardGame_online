@@ -55,4 +55,10 @@ public class HomeController : Controller
 
         return RedirectToAction("Lobby", "Game", new { code = model.RoomCode, user = model.PlayerName });
     }
+    
+    public IActionResult Privacy()
+    {
+        // Обязательно должен быть возврат представления
+        return View();
+    }
 }
