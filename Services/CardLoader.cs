@@ -41,7 +41,9 @@ public class CardLoader {
                         Cost = row.Cell(4).GetValue<int>(),
                         Reward = row.Cell(5).GetValue<int>(),
                         Icon = "/images/cards/" + iconFile, // Сохраняем относительный путь для веба
-                        Description = row.Cell(7).GetString()
+                        Description = row.Cell(7).GetString(),
+                        Weight = row.Cell(8).GetValue<int>() == 0 ? 50 : row.Cell(8).GetValue<int>(),
+                        Narrative = row.Cell(9).GetString(),
                     });
                 }
                 catch (Exception ex) { Console.WriteLine($"[ERROR] Ошибка в строке {row.RowNumber()}: {ex.Message}"); }

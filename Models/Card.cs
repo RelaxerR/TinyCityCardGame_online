@@ -12,5 +12,7 @@ public class Card
     public int Reward { get; set; } // Можно оставить как базовое значение для GET
     public string Icon { get; set; }
     public string Description { get; set; }
+    public string Narrative { get; set; }
     public bool IsUsed { get; set; } = false;
+    public int Weight { get; set; }
 }

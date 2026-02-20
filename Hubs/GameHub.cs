@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 using TinyCityCardGame_online.Services;
 using TinyCityCardGame_online.Models;
 
@@ -7,10 +8,12 @@ namespace TinyCityCardGame_online.Hubs
     public class GameHub : Hub
     {
         private readonly GameSessionService _sessionService;
+        private readonly GameSettings _settings;
 
-        public GameHub(GameSessionService sessionService)
+        public GameHub(GameSessionService sessionService, IOptions<GameSettings> settings)
         {
             _sessionService = sessionService;
+            _settings = settings.Value;
         }
 
         // Вызывается в лобби
@@ -76,9 +79,16 @@ namespace TinyCityCardGame_online.Hubs
         
                 card.IsUsed = true;
         
-                if (player.Coins >= 100) {
+                // Внутри метода ActivateCard после начисления монет:
+                if (player.Coins >= _settings.WinTarget) 
+                {
+                    // Оповещаем всех о завершении игры
                     await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
-                } else {
+    
+                    // Опционально: можно очистить данные игры в сервисе через 10 секунд
+                    // _sessionService.RemoveGame(roomCode); 
+                }
+                else {
                     await BroadcastUpdate(roomCode, state);
                 }
             }
@@ -110,24 +120,51 @@ namespace TinyCityCardGame_online.Hubs
                     await Clients.Group(roomCode).SendAsync("ShowMessage", $"Урожайный год! Все получили по {bonus}💰", "gold");
                     break;
 
-                case "STEAL_MONEY":
-                    int sAmt = int.Parse(parts[2]);
-                    var victims = state.Players.Where(p => p.Name != player.Name).ToList();
-                    foreach (var v in victims) {
-                        int stolen = Math.Min(v.Coins, sAmt);
-                        v.Coins -= stolen; player.Coins += stolen;
+                case "STEAL_MONEY": // Формат: STEAL_MONEY ALL 2 или STEAL_MONEY RANDOM 5
+                    if (parts.Length > 2) 
+                    {
+                        string targetMode = parts[1].ToUpper(); // ALL или RANDOM
+                        int amount = int.Parse(parts[2]);
+                        
+                        List<Player> victims = new List<Player>();
+                        var otherPlayers = state.Players.Where(p => p.Name != player.Name).ToList();
+
+                        if (targetMode == "ALL") {
+                            victims = otherPlayers;
+                        } else if (targetMode == "RANDOM" && otherPlayers.Any()) {
+                            victims.Add(otherPlayers[random.Next(otherPlayers.Count)]);
+                        }
+
+                        foreach (var v in victims) {
+                            int actuallyStolen = Math.Min(v.Coins, amount);
+                            v.Coins -= actuallyStolen;
+                            player.Coins += actuallyStolen;
+                            await Clients.Group(roomCode).SendAsync("ShowMessage", $"💸 {player.Name} украл {actuallyStolen}💰 у {v.Name}!", "important");
+                        }
                     }
-                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"⚔️ {player.Name} собрал дань с соседей по {sAmt}💰!", "important");
                     break;
 
-                case "STEAL_CARD":
-                    var targets = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
-                    if (targets.Any()) {
-                        var victim = targets[random.Next(targets.Count)];
-                        var stolen = victim.Inventory[random.Next(victim.Inventory.Count)];
-                        victim.Inventory.Remove(stolen);
-                        player.Inventory.Add(stolen);
-                        await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {victim.Name}!", "important");
+                case "STEAL_CARD": // Формат: STEAL_CARD ALL или STEAL_CARD RANDOM
+                    if (parts.Length > 1)
+                    {
+                        string targetMode = parts[1].ToUpper();
+                        var otherPlayers = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
+
+                        List<Player> victims = new List<Player>();
+                        if (targetMode == "ALL") {
+                            victims = otherPlayers;
+                        } else if (targetMode == "RANDOM" && otherPlayers.Any()) {
+                            victims.Add(otherPlayers[random.Next(otherPlayers.Count)]);
+                        }
+
+                        foreach (var v in victims) {
+                            if (v.Inventory.Any()) {
+                                var stolen = v.Inventory[random.Next(v.Inventory.Count)];
+                                v.Inventory.Remove(stolen);
+                                player.Inventory.Add(stolen);
+                                await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {v.Name}!", "important");
+                            }
+                        }
                     }
                     break;
 
@@ -150,34 +187,47 @@ namespace TinyCityCardGame_online.Hubs
             state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
     
             // 2. Начисление монеты за начало хода
-            var nextPlayer = state.Players.First(p => p.Name == state.TurnOrder[state.CurrentTurnIndex]);
+            var nextPlayerName = state.TurnOrder[state.CurrentTurnIndex];
+            var nextPlayer = state.Players.First(p => p.Name == nextPlayerName);
             nextPlayer.Coins += 1;
 
-            // 3. ЕСЛИ НАЧАЛСЯ НОВЫЙ КРУГ (вернулись к первому игроку)
+            // 3. Смена фазы и пополнение рынка (Конец круга)
             if (state.CurrentTurnIndex == 0)
             {
-                state.RoundNumber++; // Обновляем номер раунда
-                state.ActiveColor = (CardColor)new Random().Next(0, 4); // Новый цвет
+                state.RoundNumber++;
+                state.ActiveColor = (CardColor)new Random().Next(0, 4);
 
-                // СБРОС: Все карты всех игроков снова готовы к активации
+                // Перезарядка карт всех игроков
                 foreach (var p in state.Players)
                 {
                     p.Inventory.ForEach(c => c.IsUsed = false);
                 }
 
-                // Пополнение рынка (если были покупки)
+                // Пополнение рынка: N + 1
                 int targetSize = state.Players.Count + 1;
-                while (state.Market.Count < targetSize && state.Deck.Any())
+                while (state.Market.Count < targetSize)
                 {
-                    state.Market.Add(state.Deck[0]);
-                    state.Deck.RemoveAt(0);
+                    if (state.Deck.Any()) 
+                    {
+                        var newCard = state.Deck[0];
+                        state.Market.Add(newCard);
+                        state.Deck.RemoveAt(0);
+                    }
+                    else 
+                    {
+                        // Если колода пуста, прерываем цикл пополнения
+                        break; 
+                    }
                 }
             }
     
-            // Сброс флага покупки только для того, КТО СЕЙЧАС БУДЕТ ХОДИТЬ
+            // Сброс флага покупки для игрока, который НАЧИНАЕТ ходить
             nextPlayer.HasBoughtThisTurn = false;
-            
+
+            // Сообщение в лог
             await Clients.Group(roomCode).SendAsync("ShowMessage", $"{nextPlayer.Name} получает 1💰 на развитие поселения.");
+    
+            // Рассылка обновления всем
             await BroadcastUpdate(roomCode, state);
         }
 
@@ -189,8 +239,9 @@ namespace TinyCityCardGame_online.Hubs
                 activeColor = state.ActiveColor.ToString(),
                 market = state.Market,
                 currentPlayer = state.TurnOrder[state.CurrentTurnIndex],
-                players = state.Players, // <--- САМОЕ ВАЖНОЕ: тут новые балансы!
-                roundNumber = state.RoundNumber
+                players = state.Players,
+                roundNumber = state.RoundNumber,
+                deckCount = state.Deck.Count 
             });
         }
 

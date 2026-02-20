@@ -14,7 +14,7 @@ public class GameSessionService
     public GameSessionService(IOptions<GameSettings> settings, CardLoader loader) {
         _settings = settings.Value;
         // Загружаем эталонный список карт один раз при старте
-        _baseCards = loader.LoadCardsFromExcel("cards.xlsx");
+        _baseCards = loader.LoadCardsFromExcel("Cards.xlsx");
     }
     
     public void AddPlayer(string roomCode, string userName)
@@ -36,53 +36,97 @@ public class GameSessionService
         var state = new GameState { RoomCode = roomCode };
         var rng = new Random();
 
-        // 1. Игроки и стартовые монеты из конфига
+        // 1. ИНИЦИАЛИЗАЦИЯ ИГРОКОВ (из настроек JSON)
         var playerNames = GetPlayers(roomCode);
         foreach (var name in playerNames)
         {
-            state.Players.Add(new Player { 
+            state.Players.Add(new Player 
+            { 
                 Name = name, 
-                Coins = _settings.StartCoins // Берем 5 или 10 из JSON
+                Coins = _settings.StartCoins, // Значение из appsettings.json
+                HasBoughtThisTurn = false,
+                Inventory = new List<Card>()
             });
         }
 
-        state.TurnOrder = state.Players.OrderBy(p => p.Coins).Select(p => p.Name).ToList();
+        // Порядок хода: от бедных к богатым
+        state.TurnOrder = state.Players
+            .OrderBy(p => p.Coins)
+            .Select(p => p.Name)
+            .ToList();
 
-        // 2. Наполнение колоды (КЛОНИРОВАНИЕ)
-        // Если в Excel 10 видов карт, сделаем по 5 копий каждой
-        foreach (var bc in _baseCards) 
+        // 2. ГЕНЕРАЦИЯ КОЛОДЫ (Взвешенный рандом 1-100)
+        int targetDeckSize = 100; 
+        int totalWeight = _baseCards.Sum(c => c.Weight);
+
+        // Защита: если в Excel забыли проставить веса или файл пуст
+        if (totalWeight <= 0 || !_baseCards.Any())
         {
-            for (int i = 0; i < 5; i++) 
+            Console.WriteLine("[CRITICAL] Список базовых карт пуст или веса равны 0! Проверьте Cards.xlsx.");
+            // Добавим хоть одну техническую карту, чтобы сервер не упал
+            _baseCards.Add(new Card { Name = "Ошибка Excel", Color = CardColor.Blue, Weight = 1, Effect = "GET 1" });
+            totalWeight = 1;
+        }
+
+        for (int i = 0; i < targetDeckSize; i++)
+        {
+            int roll = rng.Next(0, totalWeight);
+            int currentSum = 0;
+
+            foreach (var bc in _baseCards)
             {
-                state.Deck.Add(new Card {
-                    Id = Guid.NewGuid().GetHashCode(), // Уникальный ID!
-                    Name = bc.Name,
-                    Color = bc.Color,
-                    Effect = bc.Effect,
-                    Cost = bc.Cost,
-                    Reward = bc.Reward,
-                    Icon = bc.Icon,
-                    Description = bc.Description,
-                    IsUsed = false
-                });
+                currentSum += bc.Weight;
+                if (roll < currentSum)
+                {
+                    // ГЛУБОКОЕ КОПИРОВАНИЕ (Создаем новый объект, а не ссылку)
+                    state.Deck.Add(new Card 
+                    {
+                        Id = Guid.NewGuid().GetHashCode(), 
+                        Name = bc.Name,
+                        Color = bc.Color,
+                        Effect = bc.Effect,
+                        Cost = bc.Cost,
+                        Reward = bc.Reward,
+                        Icon = bc.Icon,
+                        Description = bc.Description,
+                        Narrative = bc.Narrative,
+                        Weight = bc.Weight,
+                        IsUsed = false
+                    });
+                    break;
+                }
             }
         }
 
-        // Перемешиваем
+        // Перемешиваем колоду после генерации
         state.Deck = state.Deck.OrderBy(x => rng.Next()).ToList();
 
-        // 3. Рынок: N + 1 (или из конфига, если там задано жестко)
-        int marketSize = state.Players.Count + 1; 
-        // Если хочешь использовать MaxMarketSize из JSON:
-        // int marketSize = _settings.MaxMarketSize;
+        // 3. БЕЗОПАСНОЕ ФОРМИРОВАНИЕ РЫНКА (N + 1)
+        // Учитываем лимит из конфига, если он задан
+        int targetMarketSize = state.Players.Count + 1;
+        if (_settings.MaxMarketSize > 0 && targetMarketSize > _settings.MaxMarketSize)
+        {
+            targetMarketSize = _settings.MaxMarketSize;
+        }
 
-        state.Market = state.Deck.Take(marketSize).ToList();
-        state.Deck.RemoveRange(0, marketSize);
+        // Вместо RemoveRange используем безопасный цикл, чтобы не выйти за границы List
+        while (state.Market.Count < targetMarketSize && state.Deck.Any())
+        {
+            var firstCard = state.Deck[0];
+            state.Market.Add(firstCard);
+            state.Deck.RemoveAt(0);
+        }
 
+        // 4. СТАРТОВЫЕ ПАРАМЕТРЫ СЕССИИ
         state.ActiveColor = (CardColor)rng.Next(0, 4);
         state.RoundNumber = 1;
+        state.CurrentTurnIndex = 0;
 
+        // Сохраняем готовую игру в словарь активных сессий
         _activeGames[roomCode] = state;
+        
+        Console.WriteLine($"[GAME] Создана комната {roomCode}: {state.Players.Count} игр., {state.Market.Count} карт на рынке, {state.Deck.Count} в колоде.");
+        
         return state;
     }
 }
