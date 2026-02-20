@@ -28,73 +28,60 @@
 
     function renderGame(data) {
         const myName = GameApp.userName;
-        const currentPlayerName = data.currentPlayer;
-        const isMyTurn = (myName === currentPlayerName);
+        const isMyTurn = (myName === data.currentPlayer);
         const activeColorStr = data.activeColor.toLowerCase();
+        const myData = data.players.find(p => p.name === myName);
 
-        // --- УВЕДОМЛЕНИЕ О ХОДЕ ---
-        if (isMyTurn && lastActivePlayer !== myName) {
-            showTurnAlert("ВАШ ХОД, ПОСЕЛЕНЕЦ!");
-        }
-        lastActivePlayer = currentPlayerName;
+        // 1. Кнопка "Завершить ход" (Блокируем для чужих)
+        const endTurnBtn = document.getElementById("endTurnBtn");
+        endTurnBtn.disabled = !isMyTurn;
 
-        // --- 1. СПИСОК ИГРОКОВ ---
-        const playersDiv = document.getElementById("playersList");
-        playersDiv.innerHTML = data.players.map(p => {
-            const isThisPlayerTurn = p.name === currentPlayerName;
-            const isMe = p.name === myName;
+        // 2. Список игроков (ВЫ)
+        document.getElementById("playersList").innerHTML = data.players.map(p => `
+        <div class="player-pill ${p.name === data.currentPlayer ? 'active-glow' : ''}">
+            ${p.name} ${p.name === myName ? '<strong>(Вы)</strong>' : ''}: ${p.coins}💰
+        </div>`).join('');
+
+        // 3. РЫНОК + ПОДСВЕТКА ПОКУПКИ
+        const marketDiv = document.getElementById("marketCards");
+        const currentMarketIds = data.market.map(c => c.id);
+
+        marketDiv.innerHTML = data.market.map(card => {
+            const canAfford = isMyTurn && myData.coins >= card.cost;
             return `
-            <div class="player-pill ${isThisPlayerTurn ? 'active-glow' : ''}">
-                ${p.name} ${isMe ? '<strong>(Вы)</strong>' : ''}: 
-                <strong>${p.coins}💰</strong>
-            </div>`;
+        <div class="card-item ${isMyTurn ? 'clickable' : 'disabled'} ${canAfford ? 'can-afford' : ''}" 
+             onclick="buyCard(${card.id}, ${isMyTurn})">
+            <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
+            <div class="card-body">
+                <div style="font-size: 2rem">${card.icon}</div>
+                <div style="font-size: 0.8rem">Доход: ${card.reward}💰</div>
+            </div>
+            <div class="card-footer">Цена: ${card.cost}💰</div>
+        </div>`;
         }).join('');
 
-        // --- 2. ИНДИКАТОР ФАЗЫ ---
-        const colorBox = document.getElementById("currentPhaseColor");
-        colorBox.className = "color-indicator " + activeColorStr;
-
-        // --- 3. РЫНОК КАРТ ---
-        const marketDiv = document.getElementById("marketCards");
-        marketDiv.innerHTML = data.market.map(card => `
-            <div class="card-item ${isMyTurn ? 'clickable' : 'disabled'}" 
-                 onclick="buyCard(${card.id}, ${isMyTurn})">
-                <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
-                <div class="card-body">
-                    <div style="font-size: 2.5rem">${card.icon}</div>
-                    <div class="reward-text">Доход: ${card.reward}💰</div>
-                </div>
-                <div class="card-footer">Цена: ${card.cost}</div>
-            </div>
-        `).join('');
-
-        // --- 4. ИНВЕНТАРЬ И МОНЕТЫ ---
-        const me = data.players.find(p => p.name === myName);
-        if (me) {
-            document.getElementById("myCoins").innerText = me.coins;
-            
+        // 4. ИНВЕНТАРЬ (Большие карты с бонусом сзади)
+        if (myData) {
+            document.getElementById("myCoins").innerText = myData.coins;
             const inventoryDiv = document.getElementById("myInventory");
-            inventoryDiv.innerHTML = me.inventory.map(c => {
+            inventoryDiv.innerHTML = myData.inventory.map(c => {
                 const canActivate = (c.color.toLowerCase() === activeColorStr && isMyTurn && !c.isUsed);
-                const usedClass = c.isUsed ? "card-used" : "";
-                
                 return `
-                <div class="card-mini-container">
-                    <div class="card-mini-inner">
-                        <!-- Лицо карты -->
-                        <div class="card-front ${c.color.toLowerCase()} ${canActivate ? 'active-card-glow' : ''} ${usedClass}" 
-                             onclick="useCard(${c.id}, ${canActivate})">
-                            <span style="font-size: 1.5rem">${c.icon}</span>
-                        </div>
-                        <!-- Рубашка с описанием (Flip effect) -->
-                        <div class="card-back">
-                            <div class="card-desc">
-                                <strong>${c.name}</strong><br>
-                                <small>${c.description || 'Приносит золото в свою фазу'}</small>
-                            </div>
-                        </div>
+            <div class="card-mini-container">
+                <div class="card-mini-inner">
+                    <div class="card-front ${c.color.toLowerCase()} ${canActivate ? 'active-card-glow' : ''} ${c.isUsed ? 'card-used' : ''}" 
+                         onclick="useCard(${c.id}, ${canActivate})">
+                         <div style="font-size: 2rem">${c.icon}</div>
+                         <div style="font-size: 0.7rem">${c.name}</div>
                     </div>
-                </div>`;
+                    <div class="card-back">
+                        <strong>${c.name}</strong>
+                        <p>${c.description || 'Нет описания'}</p>
+                        <hr style="margin: 5px 0">
+                        <span style="color: #ffd700">Бонус: +${c.reward}💰</span>
+                    </div>
+                </div>
+            </div>`;
             }).join('');
         }
     }
@@ -148,13 +135,13 @@
     <!-- РЫНОК: Колода + 5 открытых карт -->
     <div class="market-zone">
         <div class="deck-stack">
-            <div class="card-back">🎴<br>Колода</div>
+            <div class="card-back-v">
+                <div class="deck-title">КОЛОДА</div>
+                <div class="deck-count">???</div>
+            </div>
         </div>
         <div class="open-market" id="marketCards">
-            <!-- 5 ячеек -->
-            @for(int i=0; i<5; i++) {
-                <div class="card-slot empty">Пусто</div>
-            }
+            <!-- Сюда влетают карты -->
         </div>
     </div>
 
@@ -172,7 +159,17 @@
 </div>
 
 <style>
-
+    .card-back-v {
+        width: 120px; height: 180px;
+        background: #5d2e0a;
+        border: 4px solid #8b4513;
+        border-radius: 10px;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        color: #ffd700; font-weight: bold;
+        box-shadow: 5px 5px 0 #3d1f07; /* Эффект пачки */
+    }
+    
     .active-card-glow {
         cursor: pointer;
         animation: pulse 1.5s infinite;
@@ -304,6 +301,48 @@
         font-size: 2rem; display: none; pointer-events: none;
     }
 
+    /* Увеличенный инвентарь */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 100px; height: 140px; /* Было 60x90 */
+        margin: 5px;
+    }
+
+    .card-back {
+        background: #5d2e0a;
+        color: #ffd700;
+        padding: 8px;
+        font-size: 11px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        border: 2px solid #ffd700;
+        transform: rotateY(180deg);
+    }
+
+    /* Подсветка доступных для покупки карт */
+    .card-item.can-afford {
+        box-shadow: 0 0 15px #2ecc71;
+        border-color: #2ecc71 !important;
+    }
+
+    /* Анимация появления новой карты */
+    @@keyframes card-fly-in {
+        0% { transform: scale(0) translateX(-200px); opacity: 0; }
+        100% { transform: scale(1) translateX(0); opacity: 1; }
+    }
+
+    .new-card-anim {
+        animation: card-fly-in 0.5s ease-out;
+    }
+
+    /* Кнопка "Завершить ход" активна только для текущего игрока */
+    .btn-stone:disabled {
+        filter: grayscale(1);
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
 
 
 </style>

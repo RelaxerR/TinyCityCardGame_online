@@ -113,50 +113,28 @@ namespace TinyCityCardGame_online.Hubs
         public async Task PlayerClickCard(string roomCode, int cardId)
         {
             var state = _sessionService.GetGameState(roomCode);
-            if (state == null) return;
-
             var currentPlayerName = state.TurnOrder[state.CurrentTurnIndex];
             var player = state.Players.First(p => p.Name == currentPlayerName);
             var card = state.Market.FirstOrDefault(c => c.Id == cardId);
 
-            // 1. Проверка покупки
+            // 1. ПРОВЕРКА ДЕНЕГ: Покупка происходит ТОЛЬКО если хватает золота
             if (card != null && player.Coins >= card.Cost)
             {
                 player.Coins -= card.Cost;
-                player.Inventory.Add(card); // Добавляем в инвентарь
-        
-                // Убираем с рынка и берем новую из колоды
+                player.Inventory.Add(card);
                 state.Market.Remove(card);
+
                 if (state.Deck.Any())
                 {
-                    state.Market.Add(state.Deck[0]);
+                    var nextCard = state.Deck[0];
+                    state.Market.Add(nextCard);
                     state.Deck.RemoveAt(0);
                 }
-            }
-
-            // 2. Смена хода
-            state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
-
-            // 3. Конец круга: Новая фаза + Начисление прибыли
-            if (state.CurrentTurnIndex == 0)
-            {
-                state.ActiveColor = (CardColor)new Random().Next(0, 4);
         
-                // Начисляем монеты ВСЕМ игрокам за их карты активного цвета
-                foreach (var p in state.Players)
-                {
-                    var profit = p.Inventory.Where(c => c.Color == state.ActiveColor).Sum(c => c.Reward);
-                    p.Coins += profit;
-                }
+                // Рассылаем обновление сразу после удачной покупки
+                await BroadcastUpdate(roomCode, state);
             }
-
-            // Рассылаем всем обновленное состояние
-            await Clients.Group(roomCode).SendAsync("UpdateTable", new {
-                activeColor = state.ActiveColor.ToString(),
-                market = state.Market,
-                currentPlayer = state.TurnOrder[state.CurrentTurnIndex],
-                players = state.Players
-            });
+            // Если денег не хватает — просто ничего не делаем, игрок может нажать другую карту или завершить ход
         }
     }
 }
