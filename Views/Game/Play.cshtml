@@ -22,6 +22,14 @@
             showTurnAlert("🎉 ПОБЕДА! " + winnerName.toUpperCase() + " ПРАВИТ ЭТИМИ ЗЕМЛЯМИ!");
             setTimeout(() => { window.location.href = "/"; }, 5000);
         });
+
+        GameApp.connection.on("PlayerDisconnected", (message) => {
+            // Используем нашу функцию уведомлений
+            showTurnAlert("⚠️ " + message);
+
+            // Можно также пометить игрока в списке как "Offline"
+            // Для этого нужно будет обновить данные через сервер
+        });
     });
 
     function renderGame(data) {
@@ -203,6 +211,52 @@
 </div>
 
 <style>
+    .card-mini-container {
+        perspective: 1000px;
+        width: 100px; height: 140px;
+        margin: 10px;
+        cursor: default;
+        position: relative; /* Чтобы клик ловился точно тут */
+    }
+
+    .card-mini-container.clickable-card {
+        cursor: pointer !important;
+    }
+
+    .card-mini-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+        pointer-events: none; /* Отключаем клики внутри, чтобы ловил контейнер */
+    }
+
+    .card-mini-container:hover .card-mini-inner {
+        transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Важно: чтобы контейнер ловил клик, а внутренности не мешали */
+    .card-mini-container * {
+        pointer-events: none;
+    }
+    .card-mini-container {
+        pointer-events: all;
+    }
+
     /* Анимация появления новых карт на рынке */
     .market-card-anim {
         animation: slideInFromDeck 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);

@@ -33,16 +33,33 @@
     const btnJoin = document.getElementById('btnJoin');
     const nameMirrors = document.querySelectorAll('.name-mirror');
 
-    nameInput.addEventListener('input', function() {
-        const val = this.value.trim();
-        const isDisabled = val.length < 2; // Минимум 2 символа
-        
+    // 1. При загрузке восстанавливаем имя
+    document.addEventListener("DOMContentLoaded", () => {
+        const savedName = localStorage.getItem('catan_playerName');
+        if (savedName) {
+            nameInput.value = savedName;
+            updateButtons(savedName);
+        }
+    });
+
+    function updateButtons(val) {
+        const isDisabled = val.trim().length < 2;
         btnCreate.disabled = isDisabled;
         btnJoin.disabled = isDisabled;
-
-        // Копируем имя во вторую форму
         nameMirrors.forEach(m => m.value = val);
+    }
+
+    nameInput.addEventListener('input', function() {
+        updateButtons(this.value);
     });
+
+    // 2. При клике на любую кнопку — сохраняем имя
+    const saveName = () => {
+        localStorage.setItem('catan_playerName', nameInput.value.trim());
+    };
+
+    btnCreate.addEventListener('click', saveName);
+    btnJoin.addEventListener('click', saveName);
 </script>
 
 <style>

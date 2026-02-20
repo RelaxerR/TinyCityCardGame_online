@@ -22,6 +22,15 @@ namespace TinyCityCardGame_online.Hubs
             var allPlayers = _sessionService.GetPlayers(roomCode);
             await Clients.Group(roomCode).SendAsync("UpdatePlayerList", allPlayers);
         }
+        
+        public override async Task OnDisconnectedAsync(Exception exception)
+        {
+            // Находим, в какой комнате был игрок (упрощенно по Context.ConnectionId)
+            // В идеале в GameSessionService нужно хранить связь ConnectionId -> RoomCode
+            // Но для начала просто отправим уведомление всем, если знаем имя
+            await Clients.All.SendAsync("PlayerDisconnected", "Один из поселенцев покинул остров...");
+            await base.OnDisconnectedAsync(exception);
+        }
 
         // Вызывается хостом для старта
         public async Task StartGame(string roomCode)
