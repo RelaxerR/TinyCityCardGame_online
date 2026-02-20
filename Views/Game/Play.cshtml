@@ -56,12 +56,27 @@
         // 5. Мои монеты внизу
         const me = data.players.find(p => p.name === myName);
         if (me) {
-            document.getElementById("myCoins").innerText = me.coins;
-            // Отрисовка инвентаря
+            // Обновляем текстовый счетчик монет (убедись, что id="myCoins" есть в HTML)
+            const myCoinsElement = document.getElementById("myCoins");
+            if (myCoinsElement) myCoinsElement.innerText = me.coins;
+
             const inventoryDiv = document.getElementById("myInventory");
-            inventoryDiv.innerHTML = me.inventory.map(c => `
-            <div class="card-mini ${c.color.toLowerCase()}" title="${c.name}">${c.icon}</div>
-        `).join('');
+            const activeColorStr = data.activeColor.toLowerCase(); // Берем текущий цвет фазы
+
+            inventoryDiv.innerHTML = me.inventory.map(c => {
+                // Условие активации: совпал цвет, мой ход и карта ЕЩЕ НЕ использована
+                const canActivate = (c.color.toLowerCase() === activeColorStr && isMyTurn && !c.isUsed);
+
+                // Класс для "серой" карты, если она уже использована
+                const usedClass = c.isUsed ? "card-used" : "";
+
+                return `
+        <div class="card-mini ${c.color.toLowerCase()} ${canActivate ? 'active-card-glow' : ''} ${usedClass}" 
+             onclick="useCard(${c.id}, ${canActivate})" 
+             title="${c.name} (Дает ${c.reward}💰)">
+            ${c.icon}
+        </div>`;
+            }).join('');
         }
     }
 
@@ -73,6 +88,15 @@
         console.log("Отправка клика по карте:", cardId);
         GameApp.connection.invoke("PlayerClickCard", GameApp.roomCode, cardId)
             .catch(err => console.error("Ошибка при клике:", err));
+    }
+
+    function useCard(cardId, canActivate) {
+        if (!canActivate) return;
+        GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId);
+    }
+
+    function finishTurn() {
+        GameApp.connection.invoke("EndTurn", GameApp.roomCode);
     }
 </script>
 
@@ -112,11 +136,44 @@
         </div>
         <div class="player-stats">
             <span class="coin-count">Ваше золото: <strong id="myCoins">3</strong> 💰</span>
+            <button id="endTurnBtn" class="btn-stone" onclick="finishTurn()">Завершить ход</button>
         </div>
     </div>
 </div>
 
 <style>
+
+    .active-card-glow {
+        cursor: pointer;
+        animation: pulse 1.5s infinite;
+        border: 2px solid #ffd700 !important;
+        transform: scale(1.1);
+    }
+
+    @@keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+
+    .btn-stone {
+        background: #708090;
+        color: white;
+        padding: 10px 20px;
+        border: 3px solid #2f4f4f;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .btn-stone:hover { background: #4f666a; }
+
+    .card-used {
+        opacity: 0.4;
+        filter: grayscale(1);
+        transform: scale(0.9);
+        pointer-events: none; /* Чтобы нельзя было кликнуть повторно до обновления */
+        transition: all 0.3s ease;
+    }
+
     .game-board { background: #d2b48c; height: 100vh; padding: 20px; display: flex; flex-direction: column; gap: 30px; }
     
     /* Стили панелей */

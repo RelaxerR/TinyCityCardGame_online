@@ -10,4 +10,5 @@ public class Card
     public int Cost { get; set; }
     public int Reward { get; set; }
     public string Icon { get; set; } // Например, "🌾", "🌲", "⚒️"
+    public bool IsUsed { get; set; } = false; 
 }

@@ -47,6 +47,67 @@ namespace TinyCityCardGame_online.Hubs
                 });
             }
         }
+        
+        // Метод для активации карты из инвентаря
+        public async Task ActivateCard(string roomCode, int cardId)
+        {
+            var state = _sessionService.GetGameState(roomCode);
+            if (state == null) return;
+
+            var playerName = state.TurnOrder[state.CurrentTurnIndex];
+            var player = state.Players.First(p => p.Name == playerName);
+    
+            var card = player.Inventory.FirstOrDefault(c => c.Id == cardId);
+
+            // Добавляем проверку: карта НЕ должна быть использована (IsUsed == false)
+            if (card != null && card.Color == state.ActiveColor && !card.IsUsed)
+            {
+                player.Coins += card.Reward;
+                card.IsUsed = true; // ПОМЕЧАЕМ КАК ИСПОЛЬЗОВАННУЮ
+
+                // Проверка победы (если нужно сразу)
+                if (player.Coins >= 100) {
+                    await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
+                }
+
+                await BroadcastUpdate(roomCode, state);
+            }
+        }
+
+        public async Task EndTurn(string roomCode)
+        {
+            var state = _sessionService.GetGameState(roomCode);
+            if (state == null) return;
+
+            // ПЕРЕД переходом хода сбрасываем флаги активации у ВСЕХ игроков 
+            // (или только у текущего, если правила позволяют активировать только в свой ход)
+            foreach (var p in state.Players)
+            {
+                p.Inventory.ForEach(c => c.IsUsed = false);
+            }
+
+            // Смена хода
+            state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
+
+            // Если круг замкнулся — меняем фазу
+            if (state.CurrentTurnIndex == 0)
+            {
+                state.ActiveColor = (CardColor)new Random().Next(0, 4);
+            }
+
+            await BroadcastUpdate(roomCode, state);
+        }
+
+        // Вспомогательный метод, чтобы не дублировать код рассылки
+        private async Task BroadcastUpdate(string roomCode, GameState state)
+        {
+            await Clients.Group(roomCode).SendAsync("UpdateTable", new {
+                activeColor = state.ActiveColor.ToString(),
+                market = state.Market,
+                currentPlayer = state.TurnOrder[state.CurrentTurnIndex],
+                players = state.Players
+            });
+        }
 
         // Вызывается при клике на карту
         public async Task PlayerClickCard(string roomCode, int cardId)
