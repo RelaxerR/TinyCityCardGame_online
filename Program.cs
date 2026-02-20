@@ -1,4 +1,5 @@
 using TinyCityCardGame_online.Hubs;
+using TinyCityCardGame_online.Models;
 using TinyCityCardGame_online.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -8,6 +9,9 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddControllersWithViews();
+builder.Services.AddSingleton<GameSessionService>();
+builder.Services.Configure<GameSettings>(builder.Configuration.GetSection("GameBalance"));
+builder.Services.AddSingleton<CardLoader>(); 
 builder.Services.AddSingleton<GameSessionService>();
 
 builder.Services.AddControllersWithViews()

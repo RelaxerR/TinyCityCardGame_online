@@ -61,36 +61,19 @@ namespace TinyCityCardGame_online.Hubs
         public async Task ActivateCard(string roomCode, int cardId)
         {
             var state = _sessionService.GetGameState(roomCode);
-            if (state == null) {
-                Console.WriteLine($"[ERR] Комната {roomCode} не найдена");
-                return;
-            }
+            if (state == null) return;
 
             var playerName = state.TurnOrder[state.CurrentTurnIndex];
             var player = state.Players.FirstOrDefault(p => p.Name == playerName);
-    
-            // Ищем карту. ВАЖНО: используем ID из аргумента
             var card = player?.Inventory.FirstOrDefault(c => c.Id == cardId);
 
-            // ЛОГИРОВАНИЕ ДЛЯ ПРОВЕРКИ (Увидишь в терминале Rider)
-            Console.WriteLine($"--- Активация карты ---");
-            Console.WriteLine($"Игрок: {playerName}");
-            Console.WriteLine($"Карта найдена: {card?.Name ?? "НЕТ"} (ID: {cardId})");
-            if (card != null) {
-                Console.WriteLine($"Цвет карты: {card.Color} | Активный цвет: {state.ActiveColor}");
-                Console.WriteLine($"Использована: {card.IsUsed}");
-            }
-
-            // Проверка условий
-            if (card == null || card.Color != state.ActiveColor || card.IsUsed) {
-                Console.WriteLine("[WARN] Условия активации не соблюдены");
-                return;
-            }
+            if (card == null || card.Color != state.ActiveColor || card.IsUsed) return;
 
             try 
             {
-                Console.WriteLine($"Пытаюсь запустить эффект: '{card.Effect}' для карты {card.Name}");
-                ExecuteEffect(card.Effect, player, state); // Выносим парсер в отдельный метод ниже
+                // ПЕРЕДАЕМ roomCode ТРЕТЬИМ АРГУМЕНТОМ
+                await ExecuteEffect(card.Effect, player, state, roomCode); 
+        
                 card.IsUsed = true;
         
                 if (player.Coins >= 100) {
@@ -98,90 +81,64 @@ namespace TinyCityCardGame_online.Hubs
                 } else {
                     await BroadcastUpdate(roomCode, state);
                 }
-                Console.WriteLine("[OK] Эффект выполнен успешно");
             }
             catch (Exception ex) {
-                Console.WriteLine($"[CRIT] Ошибка DSL: {ex.Message}");
+                Console.WriteLine($"Ошибка: {ex.Message}");
             }
         }
         
-        private void ExecuteEffect(string effect, Player player, GameState state)
+        private async Task ExecuteEffect(string effect, Player player, GameState state, string roomCode)
         {
-            if (string.IsNullOrEmpty(effect)) return;
+            if (string.IsNullOrWhiteSpace(effect)) return;
             
-            var parts = effect.Split(' ');
+            var parts = effect.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var cmd = parts[0].ToUpper();
             var random = new Random();
 
-            Console.WriteLine($"--- Лог эффекта [{cmd}] ---");
-            Console.WriteLine($"Игрок {player.Name} (Баланс ДО: {player.Coins}💰)");
-
-            try 
+            switch (cmd)
             {
-                switch (cmd)
-                {
-                    case "GET": // GET 5
-                        int getAmount = int.Parse(parts[1]);
-                        player.Coins += getAmount;
-                        Console.WriteLine($"[GET] Добавлено: +{getAmount}. Итог: {player.Coins}");
-                        break;
+                case "GET":
+                    int amt = int.Parse(parts[1]);
+                    player.Coins += amt;
+                    // Отправляем в лог
+                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"{player.Name} получил +{amt}💰 за свои владения", "gold");
+                    break;
 
-                    case "GETALL": // GETALL 2
-                        int allAmount = int.Parse(parts[1]);
-                        foreach (var p in state.Players) {
-                            p.Coins += allAmount;
-                            Console.WriteLine($"[GETALL] Игрок {p.Name}: +{allAmount} (Итог: {p.Coins})");
-                        }
-                        break;
+                case "GETALL":
+                    int bonus = int.Parse(parts[1]);
+                    foreach (var p in state.Players) p.Coins += bonus;
+                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"Урожайный год! Все получили по {bonus}💰", "gold");
+                    break;
 
-                    case "STEAL_MONEY": // STEAL_MONEY ALL 2
-                        string target = parts[1].ToUpper();
-                        int stealAmount = int.Parse(parts[2]);
-                        var victims = target == "ALL" 
-                            ? state.Players.Where(p => p.Name != player.Name).ToList()
-                            : state.Players.Where(p => p.Name != player.Name).OrderBy(x => random.Next()).Take(1).ToList();
+                case "STEAL_MONEY":
+                    int sAmt = int.Parse(parts[2]);
+                    var victims = state.Players.Where(p => p.Name != player.Name).ToList();
+                    foreach (var v in victims) {
+                        int stolen = Math.Min(v.Coins, sAmt);
+                        v.Coins -= stolen; player.Coins += stolen;
+                    }
+                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"⚔️ {player.Name} собрал дань с соседей по {sAmt}💰!", "important");
+                    break;
 
-                        foreach (var v in victims) {
-                            int actuallyStolen = Math.Min(v.Coins, stealAmount);
-                            v.Coins -= actuallyStolen;
-                            player.Coins += actuallyStolen;
-                            Console.WriteLine($"[STEAL] У {v.Name} украдено {actuallyStolen}. У {player.Name} теперь {player.Coins}");
-                        }
-                        break;
+                case "STEAL_CARD":
+                    var targets = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
+                    if (targets.Any()) {
+                        var victim = targets[random.Next(targets.Count)];
+                        var stolen = victim.Inventory[random.Next(victim.Inventory.Count)];
+                        victim.Inventory.Remove(stolen);
+                        player.Inventory.Add(stolen);
+                        await Clients.Group(roomCode).SendAsync("ShowMessage", $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {victim.Name}!", "important");
+                    }
+                    break;
 
-                    case "STEAL_CARD": // STEAL_CARD RANDOM
-                        var targets = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
-                        if (targets.Any()) {
-                            var victim = targets[random.Next(targets.Count)];
-                            var stolen = victim.Inventory[random.Next(victim.Inventory.Count)];
-                            victim.Inventory.Remove(stolen);
-                            player.Inventory.Add(stolen);
-                            Console.WriteLine($"[STEAL_CARD] {player.Name} украл '{stolen.Name}' у {victim.Name}");
-                        } else {
-                            Console.WriteLine("[STEAL_CARD] Не у кого красть карты.");
-                        }
-                        break;
-
-                    case "GETBY": // GETBY Blue 2
-                        var colorToMatch = Enum.Parse<CardColor>(parts[1], true);
-                        int multiplier = int.Parse(parts[2]);
-                        int count = player.Inventory.Count(c => c.Color == colorToMatch);
-                        int totalBy = count * multiplier;
-                        player.Coins += totalBy;
-                        Console.WriteLine($"[GETBY] Найдено {count} карт цвета {colorToMatch}. Добавлено: {totalBy} (Итог: {player.Coins})");
-                        break;
-                        
-                    default:
-                        Console.WriteLine($"[WARN] Неизвестная команда: {cmd}");
-                        break;
-                }
+                case "GETBY":
+                    var color = Enum.Parse<CardColor>(parts[1], true);
+                    int mult = int.Parse(parts[2]);
+                    int count = player.Inventory.Count(c => c.Color == color);
+                    player.Coins += count * mult;
+                    await Clients.Group(roomCode).SendAsync("ShowMessage", $"{player.Name} заработал {count * mult}💰 на торговле", "gold");
+                    break;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] Ошибка выполнения DSL '{effect}': {ex.Message}");
-            }
-            
-            Console.WriteLine("-------------------------");
         }
         
         public async Task EndTurn(string roomCode)
@@ -219,7 +176,8 @@ namespace TinyCityCardGame_online.Hubs
     
             // Сброс флага покупки только для того, КТО СЕЙЧАС БУДЕТ ХОДИТЬ
             nextPlayer.HasBoughtThisTurn = false;
-
+            
+            await Clients.Group(roomCode).SendAsync("ShowMessage", $"{nextPlayer.Name} получает 1💰 на развитие поселения.");
             await BroadcastUpdate(roomCode, state);
         }
 

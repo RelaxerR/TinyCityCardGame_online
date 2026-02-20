@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using TinyCityCardGame_online.Models;
 
 namespace TinyCityCardGame_online.Services;
@@ -6,7 +7,16 @@ public class GameSessionService
 {
     private readonly Dictionary<string, List<string>> _rooms = new();
     private readonly Dictionary<string, GameState> _activeGames = new();
+    
+    private readonly GameSettings _settings;
+    private readonly List<Card> _baseCards;
 
+    public GameSessionService(IOptions<GameSettings> settings, CardLoader loader) {
+        _settings = settings.Value;
+        // Загружаем эталонный список карт один раз при старте
+        _baseCards = loader.LoadCardsFromExcel("cards.xlsx");
+    }
+    
     public void AddPlayer(string roomCode, string userName)
     {
         if (!_rooms.ContainsKey(roomCode)) _rooms[roomCode] = new List<string>();
@@ -26,75 +36,53 @@ public class GameSessionService
         var state = new GameState { RoomCode = roomCode };
         var rng = new Random();
 
-        // 1. Создаем игроков с рандомными монетами (5-10)
+        // 1. Игроки и стартовые монеты из конфига
         var playerNames = GetPlayers(roomCode);
         foreach (var name in playerNames)
         {
-            state.Players.Add(new Player 
-            { 
+            state.Players.Add(new Player { 
                 Name = name, 
-                Coins = rng.Next(5, 11) // От 5 до 10 монет
+                Coins = _settings.StartCoins // Берем 5 или 10 из JSON
             });
         }
 
-        // 2. Устанавливаем порядок хода: от самого бедного к самому богатому
-        state.TurnOrder = state.Players
-            .OrderBy(p => p.Coins)
-            .Select(p => p.Name)
-            .ToList();
+        state.TurnOrder = state.Players.OrderBy(p => p.Coins).Select(p => p.Name).ToList();
 
-        // 3. Наполняем колоду (по 10 карт каждого типа)
-        var baseCards = new List<Card> {
-            new Card { 
-                Name = "Пшеница", Color = CardColor.Blue, 
-                Effect = "GETALL 1", // Все получают по 1
-                Cost = 1, Reward = 1, Icon = "🌾", Description = "Урожай для всех" 
-            },
-            new Card { 
-                Name = "Лесопилка", Color = CardColor.Gold, 
-                Effect = "GET 3", // Только ты получаешь 3
-                Cost = 3, Reward = 3, Icon = "🌲", Description = "Личный доход" 
-            },
-            new Card { 
-                Name = "Налог", Color = CardColor.Red, 
-                Effect = "STEAL_MONEY ALL 2", // Украсть у всех по 2
-                Cost = 5, Reward = 2, Icon = "📜", Description = "Сбор податей" 
-            },
-            new Card { 
-                Name = "Вор", Color = CardColor.Purple, 
-                Effect = "STEAL_CARD RANDOM", // Украсть карту
-                Cost = 8, Reward = 0, Icon = "🥷", Description = "Забирает чужое" 
-            }
-        };
-
-        foreach(var bc in baseCards) {
-            for(int i = 0; i < 10; i++) { 
-                state.Deck.Add(new Card { 
-                    Id = Guid.NewGuid().GetHashCode(), 
-                    Name = bc.Name, 
+        // 2. Наполнение колоды (КЛОНИРОВАНИЕ)
+        // Если в Excel 10 видов карт, сделаем по 5 копий каждой
+        foreach (var bc in _baseCards) 
+        {
+            for (int i = 0; i < 5; i++) 
+            {
+                state.Deck.Add(new Card {
+                    Id = Guid.NewGuid().GetHashCode(), // Уникальный ID!
+                    Name = bc.Name,
                     Color = bc.Color,
                     Effect = bc.Effect,
                     Cost = bc.Cost,
                     Reward = bc.Reward,
                     Icon = bc.Icon,
-                    Description = bc.Description
+                    Description = bc.Description,
+                    IsUsed = false
                 });
             }
         }
 
-        // Перемешиваем колоду
+        // Перемешиваем
         state.Deck = state.Deck.OrderBy(x => rng.Next()).ToList();
 
-        // 4. Формируем рынок (N+1 карт)
+        // 3. Рынок: N + 1 (или из конфига, если там задано жестко)
         int marketSize = state.Players.Count + 1; 
+        // Если хочешь использовать MaxMarketSize из JSON:
+        // int marketSize = _settings.MaxMarketSize;
+
         state.Market = state.Deck.Take(marketSize).ToList();
         state.Deck.RemoveRange(0, marketSize);
-        
-        // 5. Начальный цвет и индекс игрока
-        state.ActiveColor = (CardColor)rng.Next(0, 4);
-        state.CurrentTurnIndex = 0;
 
-        _activeGames[roomCode] = state; 
+        state.ActiveColor = (CardColor)rng.Next(0, 4);
+        state.RoundNumber = 1;
+
+        _activeGames[roomCode] = state;
         return state;
     }
 }
