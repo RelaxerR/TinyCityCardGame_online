@@ -11,4 +11,5 @@ public class Card
     public int Reward { get; set; }
     public string Icon { get; set; } // Например, "🌾", "🌲", "⚒️"
     public bool IsUsed { get; set; } = false; 
+    public string Description { get; set; } // Например: "Приносит золото из полей"
 }

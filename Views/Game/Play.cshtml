@@ -2,104 +2,134 @@
 <script src="/js/game-connector.js"></script>
 
 <script>
-    // Как только страница готова
+    // Переменная для отслеживания смены хода (чтобы не спамить уведомлением)
+    let lastActivePlayer = "";
+
     document.addEventListener("DOMContentLoaded", () => {
         
-        // Запускаем соединение
+        // 1. Инициализация соединения через наш общий коннектор
         GameApp.start(() => {
-            // После подключения просим сервер дать данные игры
+            console.log("Игра подключена к серверу");
+            // Запрашиваем начальное состояние комнаты
             GameApp.connection.invoke("InitGameView", GameApp.roomCode);
         });
 
-        // Слушаем обновления от сервера
+        // 2. Слушатель основного события обновления стола
         GameApp.connection.on("UpdateTable", (data) => {
             renderGame(data);
+        });
+
+        // 3. Слушатель завершения игры (если кто-то победил)
+        GameApp.connection.on("GameOver", (winnerName) => {
+            alert("🎉 Славный день! Поселение " + winnerName + " процветает! Набрано 100 монет!");
+            window.location.href = "/";
         });
     });
 
     function renderGame(data) {
-        // 1. Кто я и мой ли сейчас ход?
         const myName = GameApp.userName;
         const currentPlayerName = data.currentPlayer;
         const isMyTurn = (myName === currentPlayerName);
+        const activeColorStr = data.activeColor.toLowerCase();
 
-        console.log(`Сейчас ходит: ${currentPlayerName}. Я: ${myName}. Мой ход: ${isMyTurn}`);
+        // --- УВЕДОМЛЕНИЕ О ХОДЕ ---
+        if (isMyTurn && lastActivePlayer !== myName) {
+            showTurnAlert("ВАШ ХОД, ПОСЕЛЕНЕЦ!");
+        }
+        lastActivePlayer = currentPlayerName;
 
-        // 2. Индикатор цвета
-        const colorBox = document.getElementById("currentPhaseColor");
-        colorBox.className = "color-indicator " + data.activeColor.toLowerCase();
-
-        // 3. Список игроков
+        // --- 1. СПИСОК ИГРОКОВ ---
         const playersDiv = document.getElementById("playersList");
         playersDiv.innerHTML = data.players.map(p => {
             const isThisPlayerTurn = p.name === currentPlayerName;
+            const isMe = p.name === myName;
             return `
             <div class="player-pill ${isThisPlayerTurn ? 'active-glow' : ''}">
-                ${p.name}: <strong>${p.coins}💰</strong>
+                ${p.name} ${isMe ? '<strong>(Вы)</strong>' : ''}: 
+                <strong>${p.coins}💰</strong>
             </div>`;
         }).join('');
 
-        // 4. РЫНОК (Исправляем кликабельность)
+        // --- 2. ИНДИКАТОР ФАЗЫ ---
+        const colorBox = document.getElementById("currentPhaseColor");
+        colorBox.className = "color-indicator " + activeColorStr;
+
+        // --- 3. РЫНОК КАРТ ---
         const marketDiv = document.getElementById("marketCards");
         marketDiv.innerHTML = data.market.map(card => `
-        <div class="card-item ${isMyTurn ? 'clickable' : 'disabled'}" 
-             onclick="sendClick(${card.id}, ${isMyTurn})">
-            <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
-            <div class="card-body">
-                <div style="font-size: 2.5rem">${card.icon}</div>
-                <div class="reward-text">Доход: ${card.reward}💰</div>
+            <div class="card-item ${isMyTurn ? 'clickable' : 'disabled'}" 
+                 onclick="buyCard(${card.id}, ${isMyTurn})">
+                <div class="card-header ${card.color.toLowerCase()}">${card.name}</div>
+                <div class="card-body">
+                    <div style="font-size: 2.5rem">${card.icon}</div>
+                    <div class="reward-text">Доход: ${card.reward}💰</div>
+                </div>
+                <div class="card-footer">Цена: ${card.cost}</div>
             </div>
-            <div class="card-footer">Цена: ${card.cost}</div>
-        </div>
-    `).join('');
+        `).join('');
 
-        // 5. Мои монеты внизу
+        // --- 4. ИНВЕНТАРЬ И МОНЕТЫ ---
         const me = data.players.find(p => p.name === myName);
         if (me) {
-            // Обновляем текстовый счетчик монет (убедись, что id="myCoins" есть в HTML)
-            const myCoinsElement = document.getElementById("myCoins");
-            if (myCoinsElement) myCoinsElement.innerText = me.coins;
-
+            document.getElementById("myCoins").innerText = me.coins;
+            
             const inventoryDiv = document.getElementById("myInventory");
-            const activeColorStr = data.activeColor.toLowerCase(); // Берем текущий цвет фазы
-
             inventoryDiv.innerHTML = me.inventory.map(c => {
-                // Условие активации: совпал цвет, мой ход и карта ЕЩЕ НЕ использована
                 const canActivate = (c.color.toLowerCase() === activeColorStr && isMyTurn && !c.isUsed);
-
-                // Класс для "серой" карты, если она уже использована
                 const usedClass = c.isUsed ? "card-used" : "";
-
+                
                 return `
-        <div class="card-mini ${c.color.toLowerCase()} ${canActivate ? 'active-card-glow' : ''} ${usedClass}" 
-             onclick="useCard(${c.id}, ${canActivate})" 
-             title="${c.name} (Дает ${c.reward}💰)">
-            ${c.icon}
-        </div>`;
+                <div class="card-mini-container">
+                    <div class="card-mini-inner">
+                        <!-- Лицо карты -->
+                        <div class="card-front ${c.color.toLowerCase()} ${canActivate ? 'active-card-glow' : ''} ${usedClass}" 
+                             onclick="useCard(${c.id}, ${canActivate})">
+                            <span style="font-size: 1.5rem">${c.icon}</span>
+                        </div>
+                        <!-- Рубашка с описанием (Flip effect) -->
+                        <div class="card-back">
+                            <div class="card-desc">
+                                <strong>${c.name}</strong><br>
+                                <small>${c.description || 'Приносит золото в свою фазу'}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
             }).join('');
         }
     }
 
-    function sendClick(cardId, canClick) {
-        if (!canClick) {
-            console.warn("Попытка нажать не в свой ход");
-            return;
-        }
-        console.log("Отправка клика по карте:", cardId);
+    // --- ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ ---
+
+    function buyCard(cardId, canClick) {
+        if (!canClick) return;
         GameApp.connection.invoke("PlayerClickCard", GameApp.roomCode, cardId)
-            .catch(err => console.error("Ошибка при клике:", err));
+            .catch(err => console.error(err));
     }
 
     function useCard(cardId, canActivate) {
         if (!canActivate) return;
-        GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId);
+        GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId)
+            .catch(err => console.error(err));
     }
 
     function finishTurn() {
-        GameApp.connection.invoke("EndTurn", GameApp.roomCode);
+        GameApp.connection.invoke("EndTurn", GameApp.roomCode)
+            .catch(err => console.error(err));
+    }
+
+    function showTurnAlert(text) {
+        const alertBox = document.getElementById("turn-alert");
+        if(!alertBox) return;
+        alertBox.innerText = text;
+        alertBox.style.display = "block";
+        setTimeout(() => { 
+            alertBox.style.display = "none"; 
+        }, 2500);
     }
 </script>
 
+<div id="turn-alert"></div>
 <div class="game-board">
     <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
     <div class="top-bar">
@@ -225,6 +255,55 @@
     }
     .card-item.disabled { filter: grayscale(0.5); opacity: 0.8; }
     .card-footer { background: rgba(0,0,0,0.1); font-weight: bold; border-radius: 0 0 10px 10px; }
+
+    /* 1. Фон игрового стола */
+    .game-board {
+        background: url('https://img.freepik.com') center/cover no-repeat;
+        box-shadow: inset 0 0 200px rgba(0,0,0,0.5);
+    }
+
+    /* 2. Фон лицевой стороны карт (пергамент) */
+    .card-item, .card-front {
+        background: url('https://www.transparenttextures.com'), #fdf5e6;
+        border: 3px solid #8b4513;
+        border-radius: 8px;
+    }
+
+    /* 3. Эффект переворота для инвентаря */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 60px; height: 90px;
+    }
+
+    .card-mini-inner {
+        position: relative; width: 100%; height: 100%;
+        transition: transform 0.6s; transform-style: preserve-3d;
+    }
+
+    .card-mini-container:hover .card-mini-inner {
+        transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+        position: absolute; width: 100%; height: 100%;
+        backface-visibility: hidden; border-radius: 5px;
+    }
+
+    /* Рубашка карты в инвентаре */
+    .card-back {
+        background: #5d2e0a url('https://www.transparenttextures.com');
+        color: #ffd700; display: flex; align-items: center; justify-content: center;
+        border: 2px solid #ffd700; transform: rotateY(180deg);
+    }
+
+    /* Всплывающее предупреждение о ходе */
+    #turn-alert {
+        position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
+        background: rgba(139, 69, 19, 0.9); color: white; padding: 20px 40px;
+        border: 4px solid #ffd700; border-radius: 15px; z-index: 1000;
+        font-size: 2rem; display: none; pointer-events: none;
+    }
+
 
 
 </style>
