@@ -133,17 +133,19 @@
                         </div>
                         <div class="card-price">Цена: ${card.cost}💰</div>
                     </div>
-                    <div class="card-footer">${card.description || 'Ресурс'}</div>
+                    <div class="card-footer" title="${card.description}">
+                        ${card.description || 'Базовое поселение'}
+                    </div>
                 </div>`;
         }).join('');
         
         previousMarketCount = data.market.length;
 
-        // --- ИНВЕНТАРЬ (Flip-эффект и Активация) ---
+        // --- 4. ИНВЕНТАРЬ (Стиль магазина + Flip-эффект) ---
         const inventoryDiv = document.getElementById("myInventory");
 
         if (myData && inventoryDiv) {
-            // Обновляем монеты
+            // Обновляем счетчик монет
             const myCoinsElem = document.getElementById("myCoins");
             if (myCoinsElem) myCoinsElem.innerText = myData.coins;
 
@@ -155,42 +157,56 @@
                     const cardColor = String(c.color || "").toLowerCase();
                     const isRightPhase = (cardColor === serverActiveColor);
 
-                    // Карта активна: мой ход + фаза совпала + не использована
+                    // Карта активна: совпал цвет + мой ход + не использована
                     const canActivate = isRightPhase && isMyTurn && !c.isUsed;
                     const usedClass = c.isUsed ? "card-used" : "";
+                    const glowClass = canActivate ? "active-card-glow" : "";
 
-                    // Картинка или заглушка
+                    // Картинка или заглушка (используем тот же класс, что в магазине)
                     const cardImgHtml = c.icon
-                        ? `<img src="${c.icon}" class="card-illustration-mini" alt="${c.name}">`
-                        : `<div class="no-icon-mini">🏰</div>`;
+                        ? `<img src="${c.icon}" class="card-illustration" alt="${c.name}">`
+                        : `<div class="no-icon">🏰</div>`;
 
                     return `
-            <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
-                 onclick="useCard(${c.id}, ${canActivate}, event)">
-                <div class="card-mini-inner">
-                    <!-- ЛИЦО КАРТЫ -->
-                    <div class="card-front ${cardColor} ${canActivate ? 'active-card-glow' : ''} ${usedClass}">
-                         <div class="img-container-mini">
-                            ${cardImgHtml}
-                         </div>
-                         <div class="card-mini-name">${c.name || 'Карта'}</div>
-                    </div>
-                    <!-- РУБАШКА -->
-                    <div class="card-back">
-                        <strong style="font-size: 0.8rem;">${c.name}</strong>
-                        <p style="font-size: 10px; margin: 2px 0;">${c.description || 'Эффект поселения'}</p>
-                        <div style="border-top: 1px solid #ffd700; width: 100%; margin-top: auto; padding-top: 3px;">
-                            <span style="color: #ffd700; font-weight: bold; font-size: 0.7rem;">${c.effect || ''}</span>
+                    <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
+                         onclick="useCard(${c.id}, ${canActivate}, event)">
+                        <div class="card-mini-inner">
+                            
+                            <!-- ЛИЦЕВАЯ СТОРОНА (Копия стиля магазина без цены) -->
+                            <div class="card-front ${glowClass} ${usedClass}">
+                                <div class="card-header ${cardColor}">${c.name}</div>
+                                <div class="card-body">
+                                    <div class="img-container" style="height: 90px;"> 
+                                        ${cardImgHtml}
+                                    </div>
+                                    <div style="font-weight: bold; color: #8b4513; font-size: 0.8rem;">
+                                        БОНУС: +${c.reward}💰
+                                    </div>
+                                </div>
+                                <div class="card-mini-footer">
+                                    ${c.description || 'Ресурс поселения'}
+                                </div>
+                            </div>
+
+                            <!-- ОБРАТНАЯ СТОРОНА (Техническая информация) -->
+                            <div class="card-back">
+                                <strong style="color: #ffd700; font-size: 0.8rem; text-transform: uppercase;">${c.name}</strong>
+                                <p style="font-size: 0.7rem; margin: 10px 0; overflow-y: auto;">
+                                    ${c.description || 'Эффект этого владения активируется в свою фазу.'}
+                                </p>
+                                <div class="dsl-info" title="${c.effect}">
+                                    ⚡ ${c.effect || 'Нет эффекта'}
+                                </div>
+                            </div>
+
                         </div>
-                    </div>
-                </div>
-            </div>`;
+                    </div>`;
                 }).join('');
             } else {
-                inventoryDiv.innerHTML = "<p style='opacity:0.5; padding: 20px;'>Ваши владения пока пусты...</p>";
+                inventoryDiv.innerHTML = "<p style='opacity:0.5; padding: 20px; color: #4a2c2a;'>Ваши земли пока пустуют. Купите что-нибудь на рынке!</p>";
             }
         }
-
+        
         // --- КНОПКА ЗАВЕРШЕНИЯ ХОДА ---
         const endBtn = document.getElementById("endTurnBtn");
         if(endBtn) endBtn.disabled = !isMyTurn;
@@ -260,7 +276,7 @@
     <!-- ВЕРХНЯЯ ПАНЕЛЬ: Игроки и Текущий цвет -->
     <div class="top-bar">
         <div class="active-event">
-            <span>Активная фаза:</span>
+            <span class="phase-label">Активная фаза:</span>
             <div id="currentPhaseColor" class="color-indicator blue"></div>
         </div>
         
@@ -280,7 +296,6 @@
         <div class="deck-stack">
             <div class="card-back-v">
                 <div class="deck-title">КОЛОДА</div>
-                <div class="deck-count">???</div>
             </div>
         </div>
         <div class="open-market" id="marketCards">
@@ -302,6 +317,298 @@
 </div>
 
 <style>
+    /* КАРТА В МАГАЗИНЕ (Рынок) */
+    .card-item {
+        width: 180px;        /* Было 150 */
+        height: 280px;       /* Было 240 */
+        min-width: 180px;
+        background: #fdf5e6;
+        border: 4px solid #8b4513;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+    }
+
+    /* КАРТА В ИНВЕНТАРЕ */
+    .card-mini-container {
+        perspective: 1000px;
+        width: 150px;        /* Было 130 */
+        height: 230px;       /* Было 200 */
+        margin: 10px;
+        cursor: default;
+    }
+
+    /* Контейнеры для изображений (подгоняем под новые размеры) */
+    .img-container {
+        width: 100%;
+        height: 120px;       /* Увеличили область картинки на рынке */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        margin-bottom: 5px;
+    }
+
+    .img-container-mini {
+        width: 100%;
+        height: 90px;        /* Увеличили область картинки в инвентаре */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    /* Футеры (нижняя часть с описанием) */
+    .card-footer {
+        height: 75px;        /* Больше места под описание на рынке */
+        padding: 8px;
+        font-size: 0.8rem;
+    }
+
+    .card-mini-footer {
+        height: 60px;        /* Больше места под описание в инвентаре */
+        padding: 6px;
+        font-size: 0.75rem;
+    }
+
+    /* Сетка рынка (чтобы большие карты не слипались) */
+    .open-market {
+        gap: 25px;
+        padding: 30px;
+        min-height: 320px;
+    }
+
+    /* Общие правила для всех карт */
+    .card-item, .card-mini-container {
+        background: #fdf5e6;
+        border: 4px solid #8b4513;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    /* Карты инвентаря чуть компактнее рыночных */
+    .card-mini-container {
+        width: 130px;  /* Рынок 150px, инвентарь 130px */
+        height: 200px; /* Рынок 240px, инвентарь 200px */
+        perspective: 1000px;
+        margin: 5px;
+        cursor: default;
+        border: 3px solid #8b4513; /* Чуть тоньше рамка */
+    }
+
+    /* Внутренности для Flip-эффекта в инвентаре */
+    .card-mini-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+    }
+
+    .card-front, .card-back {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Лицевая сторона (как в магазине) */
+    .card-front {
+        background: #fdf5e6;
+    }
+
+    /* Описание в инвентаре (футер) */
+    .card-mini-footer {
+        height: 50px;
+        background: rgba(0,0,0,0.05);
+        border-top: 1px solid rgba(139, 69, 19, 0.2);
+        padding: 4px;
+        font-size: 0.7rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        overflow: hidden;
+    }
+    
+    .open-market {
+        display: flex;
+        gap: 20px; /* Увеличим расстояние между картами */
+        padding: 20px;
+        background: rgba(0,0,0,0.15);
+        border-radius: 20px;
+        min-height: 280px; /* Чтобы контейнер не прыгал */
+        align-items: center;
+    }
+
+    /* КАРТА НА РЫНКЕ (Увеличенная) */
+    .card-item {
+        width: 150px;       /* Было 120 */
+        height: 240px;      /* Было 180 */
+        background: #fdf5e6;
+        border: 4px solid #8b4513;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column; /* Располагаем элементы вертикально */
+        position: relative;
+        overflow: hidden;   /* Все, что выйдет за рамки - обрежется */
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    /* ШАПКА КАРТЫ */
+    .card-header {
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        font-weight: bold;
+        padding: 0 5px;
+        text-align: center;
+    }
+
+    /* ТЕЛО КАРТЫ (Картинка и Цена) */
+    .card-body {
+        flex-grow: 1; /* Занимает все свободное место между шапкой и футером */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 5px;
+    }
+
+    .img-container {
+        width: 100%;
+        height: 100px; /* Фиксируем высоту иллюстрации */
+        margin-bottom: 5px;
+    }
+
+    /* ФУТЕР С ОПИСАНИЕМ (Всегда снизу) */
+    .card-footer {
+        height: 60px; /* Фиксированная высота для описания */
+        background: rgba(139, 69, 19, 0.1);
+        border-top: 1px solid rgba(139, 69, 19, 0.3);
+        padding: 5px 8px;
+        font-size: 0.75rem;
+        line-height: 1.3;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+
+        /* Обрезка текста после 3-й строки */
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+    }
+
+    /* Описание на картах РЫНКА (Футер) */
+    .card-footer {
+        height: 45px; /* Фиксированная высота */
+        font-size: 0.75rem;
+        line-height: 1.2;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 3; /* Максимум 3 строки */
+        -webkit-box-orient: vertical;
+        padding: 5px;
+        background: rgba(0,0,0,0.05);
+        border-top: 1px solid rgba(139, 69, 19, 0.2);
+        text-align: center;
+        word-break: break-word;
+    }
+
+    /* Рубашка карты в ИНВЕНТАРЕ */
+    .card-back {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 8px;
+        box-sizing: border-box;
+    }
+
+    /* Текст описания на обороте */
+    .card-back p {
+        font-size: 0.7rem;
+        margin: 5px 0;
+        max-height: 60px; /* Ограничиваем, чтобы не выдавило DSL */
+        overflow-y: auto; /* Если текста МНОГО, появится аккуратный скролл */
+        line-height: 1.2;
+        color: #fdf5e6;
+    }
+
+    /* Блок DSL эффекта на обороте */
+    .dsl-info {
+        border-top: 1px solid #ffd700;
+        padding-top: 5px;
+        width: 100%;
+        font-size: 0.7rem;
+        font-weight: bold;
+        color: #ffd700;
+        white-space: nowrap; /* Не даем разрываться строке */
+        overflow: hidden;
+        text-overflow: ellipsis; /* Если команда слишком длинная — сокращаем */
+    }
+
+    @@keyframes phase-pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    .color-indicator {
+        animation: phase-pulse 2s infinite ease-in-out;
+    }
+
+    .active-event {
+        display: flex;
+        align-items: center; /* Выравнивание по вертикальному центру */
+        gap: 15px;           /* Расстояние между текстом и кругом */
+        background: rgba(0, 0, 0, 0.2);
+        padding: 10px 20px;
+        border-radius: 30px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .phase-label {
+        color: #fdf5e6;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-size: 1.1rem;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        line-height: 1; /* Убираем лишние отступы строки */
+    }
+
+    .color-indicator {
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        border: 3px solid #fff;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3), inset 0 0 10px rgba(0,0,0,0.2);
+        transition: background-color 0.5s ease, box-shadow 0.5s ease;
+        flex-shrink: 0; /* Чтобы круг не сплющивался */
+    }
+
+    /* Сочные цвета фаз */
+    .blue   { background-color: #3498db; box-shadow: 0 0 15px #3498db; }
+    .gold   { background-color: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
+    .red    { background-color: #e74c3c; box-shadow: 0 0 15px #e74c3c; }
+    .purple { background-color: #9b59b6; box-shadow: 0 0 15px #9b59b6; }
+
+
     .victory-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.9); z-index: 10000;
