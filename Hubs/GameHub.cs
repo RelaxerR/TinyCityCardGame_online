@@ -126,7 +126,7 @@ namespace TinyCityCardGame_online.Hubs
                         string targetMode = parts[1].ToUpper(); // ALL или RANDOM
                         int amount = int.Parse(parts[2]);
                         
-                        List<Player> victims = new List<Player>();
+                        List<Player?> victims = new List<Player?>();
                         var otherPlayers = state.Players.Where(p => p.Name != player.Name).ToList();
 
                         if (targetMode == "ALL") {
@@ -150,7 +150,7 @@ namespace TinyCityCardGame_online.Hubs
                         string targetMode = parts[1].ToUpper();
                         var otherPlayers = state.Players.Where(p => p.Name != player.Name && p.Inventory.Any()).ToList();
 
-                        List<Player> victims = new List<Player>();
+                        List<Player?> victims = new List<Player?>();
                         if (targetMode == "ALL") {
                             victims = otherPlayers;
                         } else if (targetMode == "RANDOM" && otherPlayers.Any()) {
