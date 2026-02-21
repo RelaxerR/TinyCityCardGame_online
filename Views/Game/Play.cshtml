@@ -1,61 +1,81 @@
+@{
+    ViewBag.Title = "Игра: Поселенцы";
+    ViewBag.RoomCode = ViewBag.RoomCode ?? "0000";
+    ViewBag.UserName = ViewBag.UserName ?? "Гость";
+}
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Игра: Поселенцы</title>
-    <link rel="stylesheet" href="/css/play.css">
+    <title>@ViewBag.Title</title>
+    <link rel="stylesheet" href="/css/play.css" />
 </head>
 <body>
-<div id="turn-alert"></div>
+    @* Уведомление о ходе *@
+    <div id="turn-alert"></div>
 
-<div class="log-container" id="logContainer">
-    <div class="log-header">
-        📜 ЛЕТОПИСЬ СОБЫТИЙ
-        <button class="log-toggle-btn" id="logToggleBtn" title="Свернуть">−</button>
-    </div>
-    <div id="gameLog" class="log-content">
-        <div class="log-item">Добро пожаловать в гавань!</div>
-    </div>
-</div>
-
-<!-- Кнопка для разворачивания (скрыта по умолчанию) -->
-<button class="log-open-btn" id="logOpenBtn" title="Открыть летопись">📜</button>
-
-<div class="game-board">
-    <div class="top-bar">
-        <div class="active-event">
-            <span class="phase-label">Активная фаза:</span>
-            <div id="currentPhaseColor" class="color-indicator blue"></div>
+    @* Летопись событий *@
+    <div class="log-container" id="logContainer">
+        <div class="log-header">
+            📜 ЛЕТОПИСЬ СОБЫТИЙ
+            <button class="log-toggle-btn" id="logToggleBtn" title="Свернуть">−</button>
         </div>
-        <div class="turn-info">
-            <span class="round-badge">РАУНД: <strong id="roundNum">1</strong></span>
+        <div id="gameLog" class="log-content">
+            <div class="log-item">Добро пожаловать в гавань!</div>
         </div>
-        <div class="players-status" id="playersList"></div>
     </div>
 
-    <div class="market-zone">
-        <div class="deck-stack">
-            <div class="card-back-v">
-                <div class="deck-title">КОЛОДА</div>
-                <div id="deckCount" class="deck-number">0</div>
+    @* Кнопка для разворачивания летописи *@
+    <button class="log-open-btn" id="logOpenBtn" title="Открыть летопись">📜</button>
+
+    @* Игровое поле *@
+    <div class="game-board">
+        @* Верхняя панель *@
+        <div class="top-bar">
+            <div class="active-event">
+                <span class="phase-label">Активная фаза:</span>
+                <div id="currentPhaseColor" class="color-indicator blue"></div>
+            </div>
+            <div class="turn-info">
+                <span class="round-badge">
+                    РАУНД: <strong id="roundNum">1</strong>
+                </span>
+            </div>
+            <div class="players-status" id="playersList"></div>
+        </div>
+
+        @* Зона рынка *@
+        <div class="market-zone">
+            <div class="deck-stack">
+                <div class="card-back-v">
+                    <div class="deck-title">КОЛОДА</div>
+                    <div id="deckCount" class="deck-number">0</div>
+                </div>
+            </div>
+            <div class="open-market" id="marketCards"></div>
+        </div>
+
+        @* Инвентарь игрока *@
+        <div class="player-hand-section">
+            <h3>Ваши владения</h3>
+            <div class="my-cards" id="myInventory"></div>
+            <div class="player-stats">
+                <span class="coin-count">
+                    Ваше золото: <strong id="myCoins">3</strong> 💰
+                </span>
+                <button id="endTurnBtn" class="btn-stone" onclick="finishTurn()">
+                    Завершить ход
+                </button>
             </div>
         </div>
-        <div class="open-market" id="marketCards"></div>
     </div>
 
-    <div class="player-hand-section">
-        <h3>Ваши владения</h3>
-        <div class="my-cards" id="myInventory"></div>
-        <div class="player-stats">
-            <span class="coin-count">Ваше золото: <strong id="myCoins">3</strong> 💰</span>
-            <button id="endTurnBtn" class="btn-stone" onclick="finishTurn()">Завершить ход</button>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
-<script src="/js/game-connector.js"></script>
-<script src="/js/play.js"></script>
+    @* Подключение скриптов *@
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script src="/js/game-connector.js"></script>
+    @* TODO: Убедиться что play.js существует в wwwroot/js/ *@
+    <script src="/js/play.js"></script>
 </body>
 </html>

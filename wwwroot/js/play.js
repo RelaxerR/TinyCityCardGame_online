@@ -1,13 +1,24 @@
+// ============================================================================
+// Play.js - Основная логика игрового процесса
+// Tiny City Online - Game Client Logic
+// ============================================================================
+
 let lastActivePlayer = "";
 let previousMarketCount = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Инициализация кнопок летописи
     initLogToggle();
-    
+
+    // Запуск подключения
     GameApp.start(() => {
-        console.log("Игра подключена. Запрашиваю состояние стола...");
+        console.log("[Play.js] Игра подключена. Запрашиваю состояние стола...");
         GameApp.connection.invoke("InitGameView", GameApp.roomCode);
     });
+
+    // ========================================================================
+    // ⚠️ ВАЖНО: Используем GameApp.connection.on(), а не GameApp.on()
+    // ========================================================================
 
     GameApp.connection.on("UpdateTable", (data) => {
         renderGame(data);
@@ -22,6 +33,10 @@ document.addEventListener("DOMContentLoaded", () => {
         showTurnAlert(msg);
     });
 });
+
+// ============================================================================
+// РЕНДЕРИНГ ИГРЫ
+// ============================================================================
 
 function renderGame(data) {
     const myName = GameApp.userName;
@@ -54,10 +69,11 @@ function updateTurnNotification(isMyTurn, myName, currentPlayerName) {
 
 function updatePlayersList(players, myName, currentPlayerName) {
     const playersDiv = document.getElementById("playersList");
+    if (!playersDiv) return;
+
     playersDiv.innerHTML = players.map(p => {
         const isTurn = p.name === currentPlayerName;
-        return `
-        <div class="player-pill ${isTurn ? 'active-glow' : ''}">
+        return `<div class="player-pill ${isTurn ? 'active-glow' : ''}">
             ${p.name} ${p.name === myName ? '<strong>(Вы)</strong>' : ''}: 
             <strong>${p.coins}💰</strong>
         </div>`;
@@ -71,11 +87,14 @@ function updatePhaseIndicator(colorClass) {
 
 function updateMarket(market, isMyTurn, myData) {
     const marketDiv = document.getElementById("marketCards");
+    if (!marketDiv) return;
+
     const isReplenishing = market.length > previousMarketCount;
 
     marketDiv.innerHTML = market.map((card, index) => {
         const canAfford = isMyTurn && !myData?.hasBoughtThisTurn && myData?.coins >= card.cost;
         const animClass = (isReplenishing && index >= previousMarketCount) ? 'market-card-anim' : '';
+
         const cardImg = card.icon
             ? `<img src="${card.icon}" class="card-illustration" alt="${card.name}">`
             : `<div class="no-icon">🏰</div>`;
@@ -111,6 +130,7 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
             const canActivate = isRightPhase && isMyTurn && !c.isUsed;
             const usedClass = c.isUsed ? "card-used" : "";
             const glowClass = canActivate ? "active-card-glow" : "";
+
             const cardImgHtml = c.icon
                 ? `<img src="${c.icon}" class="card-illustration" alt="${c.name}">`
                 : `<div class="no-icon">🏰</div>`;
@@ -118,7 +138,8 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
             const dynamicBonus = calculateCardBonus(c, myData.inventory);
 
             return `
-                <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} ${canActivate ? 'clickable-card' : ''}" 
+                <div class="card-mini-container ${!isRightPhase ? 'wrong-phase' : ''} 
+                                                ${canActivate ? 'clickable-card' : ''}" 
                      onclick="useCard(${c.id}, ${canActivate}, event)">
                     <div class="card-mini-inner">
                         <div class="card-front ${glowClass} ${usedClass}">
@@ -127,7 +148,6 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
                                 <div class="img-container" style="height: 90px;"> 
                                     ${cardImgHtml}
                                 </div>
-                                <!-- ТЕПЕРЬ ТУТ ДИНАМИЧЕСКОЕ ЧИСЛО -->
                                 <div style="font-weight: bold; color: #8b4513; font-size: 0.9rem;">
                                     БОНУС: +${dynamicBonus}💰
                                 </div>
@@ -137,7 +157,9 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
                             </div>
                         </div>
                         <div class="card-back">
-                            <strong style="color: #ffd700; font-size: 0.8rem; text-transform: uppercase;">${c.name}</strong>
+                            <strong style="color: #ffd700; font-size: 0.8rem; text-transform: uppercase;">
+                                ${c.name}
+                            </strong>
                             <p style="font-size: 0.7rem; margin: 10px 0;">${c.narrative}</p>
                             <div class="dsl-info">⚡ ${c.effect}</div>
                         </div>
@@ -151,18 +173,37 @@ function updateInventory(myData, isMyTurn, serverActiveColor) {
 
 function updateEndTurnButton(isMyTurn) {
     const endBtn = document.getElementById("endTurnBtn");
-    if(endBtn) endBtn.disabled = !isMyTurn;
+    if (endBtn) endBtn.disabled = !isMyTurn;
 }
+
+function updateDeckCount(deckCount) {
+    const deckElem = document.getElementById("deckCount");
+    const deckStack = document.querySelector(".deck-stack");
+
+    if (deckElem) {
+        deckElem.innerText = (deckCount > 0) ? `${deckCount} 🂠` : "ПУСТО";
+    }
+
+    if (deckStack) {
+        deckStack.classList.toggle("empty", deckCount <= 0);
+    }
+}
+
+// ============================================================================
+// ДЕЙСТВИЯ ИГРОКА
+// ============================================================================
 
 function buyCard(cardId, canAfford) {
     if (!canAfford) return;
+
     GameApp.connection.invoke("PlayerClickCard", GameApp.roomCode, cardId)
-        .catch(err => console.error("Ошибка покупки:", err));
+        .catch(err => console.error("[Play.js] Ошибка покупки:", err));
 }
 
 function useCard(cardId, canActivate, event) {
     if (!canActivate) return;
 
+    // Анимация монет
     const coin = document.createElement("div");
     coin.className = "coin-anim";
     coin.innerText = "+💰";
@@ -172,17 +213,22 @@ function useCard(cardId, canActivate, event) {
     setTimeout(() => coin.remove(), 1000);
 
     GameApp.connection.invoke("ActivateCard", GameApp.roomCode, cardId)
-        .catch(err => console.error("Ошибка активации:", err));
+        .catch(err => console.error("[Play.js] Ошибка активации:", err));
 }
 
 function finishTurn() {
     GameApp.connection.invoke("EndTurn", GameApp.roomCode)
-        .catch(err => console.error("Ошибка завершения хода:", err));
+        .catch(err => console.error("[Play.js] Ошибка завершения хода:", err));
 }
+
+// ============================================================================
+// УВЕДОМЛЕНИЯ И ЛОГИ
+// ============================================================================
 
 function showTurnAlert(text) {
     const alertBox = document.getElementById("turn-alert");
-    if(!alertBox) return;
+    if (!alertBox) return;
+
     alertBox.innerText = text;
     alertBox.style.display = "block";
     setTimeout(() => { alertBox.style.display = "none"; }, 3000);
@@ -190,15 +236,22 @@ function showTurnAlert(text) {
 
 function addToLog(message, type = "") {
     const logDiv = document.getElementById("gameLog");
+    if (!logDiv) return;
+
     const item = document.createElement("div");
     item.className = `log-item ${type}`;
 
     const now = new Date();
     const timeStr = `[${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}] `;
     item.innerHTML = `<span>${timeStr}${message}</span>`;
+
     logDiv.appendChild(item);
     logDiv.scrollTop = logDiv.scrollHeight;
 }
+
+// ============================================================================
+// ЭКРАН ПОБЕДЫ
+// ============================================================================
 
 function showVictoryScreen(winnerName) {
     const overlay = document.createElement("div");
@@ -213,6 +266,7 @@ function showVictoryScreen(winnerName) {
         </div>
         <div id="coin-rain"></div>
     `;
+
     document.body.appendChild(overlay);
     startCoinRain();
 
@@ -230,6 +284,8 @@ function showVictoryScreen(winnerName) {
 
 function startCoinRain() {
     const container = document.getElementById("coin-rain");
+    if (!container) return;
+
     for (let i = 0; i < 50; i++) {
         const coin = document.createElement("div");
         coin.className = "falling-coin";
@@ -241,6 +297,10 @@ function startCoinRain() {
     }
 }
 
+// ============================================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================================
+
 function calculateCardBonus(card, allCards) {
     if (!card.effect) return card.reward || 0;
 
@@ -250,31 +310,13 @@ function calculateCardBonus(card, allCards) {
     if (cmd === "GETBY") {
         const targetColor = parts[1].toLowerCase();
         const multiplier = parseInt(parts[2]);
-        // Считаем, сколько в инвентаре карт нужного цвета
         const count = allCards.filter(c => String(c.color).toLowerCase() === targetColor).length;
         return count * multiplier;
     }
 
-    // Для обычных GET/GETALL возвращаем базовый reward
     return card.reward || 0;
 }
 
-function updateDeckCount(deckCount) {
-    const deckElem = document.getElementById("deckCount");
-    const deckStack = document.querySelector(".deck-stack");
-
-    if (deckElem) {
-        // Показываем число или "ПУСТО", если карт нет
-        deckElem.innerText = (deckCount > 0) ? `${deckCount} 🂠` : "ПУСТО";
-    }
-
-    // Визуально затемняем колоду, если она пуста
-    if (deckStack) {
-        deckStack.classList.toggle("empty", deckCount <= 0);
-    }
-}
-
-// === Инициализация кнопок летописи ===
 function initLogToggle() {
     const logContainer = document.getElementById("logContainer");
     const logToggleBtn = document.getElementById("logToggleBtn");
@@ -297,7 +339,20 @@ function initLogToggle() {
     // Кнопка открытия
     logOpenBtn?.addEventListener("click", () => {
         logContainer?.classList.remove("collapsed");
-        logOpenBtn.style.setProperty("display", "none");
+        logOpenBtn?.style.setProperty("display", "none");
         localStorage.setItem("logCollapsed", "false");
     });
 }
+
+// ============================================================================
+// ОБРАБОТКА ОШИБОК
+// ============================================================================
+
+window.addEventListener('error', (event) => {
+    console.error('[Play.js] Глобальная ошибка:', event.error);
+    addToLog(`⚠️ Ошибка: ${event.error?.message || 'Неизвестная ошибка'}`, 'important');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Play.js] Необработанное исключение Promise:', event.reason);
+});

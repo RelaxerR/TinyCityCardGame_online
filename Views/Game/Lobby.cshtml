@@ -1,11 +1,33 @@
-@{ ViewBag.Title = "Лобби поселенцев"; }
+@{
+ViewBag.Title = "Лобби поселенцев";
+ViewBag.RoomCode = ViewBag.RoomCode ?? "0000";
+ViewBag.UserName = ViewBag.UserName ?? "Гость";
+}
 
-<!-- 1. Библиотека строго ПЕРЕД основным кодом -->
+<!-- Подключение SignalR -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+<div class="lobby-container">
+    <h2>Порт: <span id="roomCode">@ViewBag.RoomCode</span></h2>
+
+    <div class="player-list-box">
+        <h3>Прибывшие колонисты:</h3>
+        <ul id="playerList">
+            <li>@ViewBag.UserName (Вы)</li>
+        </ul>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn" class="btn-wood" style="display:none;">
+            Поднять паруса (Старт)
+        </button>
+        <p class="wait-msg">Ждем остальных участников...</p>
+    </div>
+</div>
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        // Проверяем, загрузилась ли библиотека
+        // Проверка загрузки библиотеки SignalR
         if (typeof signalR === "undefined") {
             console.error("SignalR не загружен! Проверь интернет или ссылку на CDN.");
             return;
@@ -19,26 +41,30 @@
         const roomCode = "@ViewBag.RoomCode";
         const userName = "@ViewBag.UserName";
 
+        // Обновление списка игроков
         connection.on("UpdatePlayerList", (players) => {
             console.log("Получен список игроков:", players);
             const listElement = document.getElementById("playerList");
             listElement.innerHTML = "";
+
             players.forEach(player => {
                 const li = document.createElement("li");
                 li.textContent = player === userName ? `${player} (Вы)` : player;
                 listElement.appendChild(li);
             });
 
+            // Показываем кнопку старта при 2+ игроках
             if (players.length >= 2) {
                 document.getElementById("startBtn").style.display = "block";
             }
         });
 
+        // Перенаправление на страницу игры
         connection.on("GameStarted", () => {
-            // Перенаправляем игрока на страницу игры, передавая его имя и код комнаты
             window.location.href = `/Game/Play?code=${roomCode}&user=${userName}`;
         });
 
+        // Подключение к хабу
         connection.start()
             .then(() => {
                 console.log("Соединение установлено!");
@@ -53,25 +79,46 @@
     });
 </script>
 
-<div class="lobby-container">
-    <h2>Порт: <span id="roomCode">@ViewBag.RoomCode</span></h2>
-    <div class="player-list-box">
-        <h3>Прибывшие колонисты:</h3>
-        <ul id="playerList">
-            <li>@ViewBag.UserName (Вы)</li>
-        </ul>
-    </div>
-
-    <div class="controls">
-        <button id="startBtn" class="btn-wood" style="display:none;">Поднять паруса (Старт)</button>
-        <p class="wait-msg">Ждем остальных участников...</p>
-    </div>
-</div>
-
 <style>
-    .lobby-container { background: #fdf5e6; border: 8px solid #a0522d; padding: 20px; max-width: 500px; margin: 50px auto; }
-    .player-list-box { background: rgba(139, 69, 19, 0.1); border-radius: 10px; padding: 15px; margin: 20px 0; }
-    #playerList { list-style: none; padding: 0; font-size: 1.2rem; }
-    #playerList li { padding: 5px; border-bottom: 1px dashed #a0522d; }
-    .btn-wood { background: #8b4513; color: white; padding: 15px; width: 100%; border: none; cursor: pointer; font-size: 1.1rem; }
+    .lobby-container {
+        background: #fdf5e6;
+        border: 8px solid #a0522d;
+        padding: 20px;
+        max-width: 500px;
+        margin: 50px auto;
+    }
+
+    .player-list-box {
+        background: rgba(139, 69, 19, 0.1);
+        border-radius: 10px;
+        padding: 15px;
+        margin: 20px 0;
+    }
+
+    #playerList {
+        list-style: none;
+        padding: 0;
+        font-size: 1.2rem;
+    }
+
+    #playerList li {
+        padding: 5px;
+        border-bottom: 1px dashed #a0522d;
+    }
+
+    .btn-wood {
+        background: #8b4513;
+        color: white;
+        padding: 15px;
+        width: 100%;
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+    }
+
+    .wait-msg {
+        color: #8b4513;
+        font-style: italic;
+        margin-top: 15px;
+    }
 </style>

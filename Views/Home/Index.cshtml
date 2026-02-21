@@ -1,39 +1,81 @@
-﻿@model HomeViewModel
+﻿@model TinyCityCardGame_online.Models.HomeViewModel
+@{
+ViewData["Title"] = "Tiny City Online";
+}
 
 <div class="main-container text-center">
     <h1 class="game-title">Tiny City Online</h1>
-    
+
     <div class="scroll-box">
-        <!-- Вывод ошибок (если комната не найдена или имя занято) -->
+        @* Отображение ошибок валидации *@
         @if (TempData["Error"] != null)
         {
-            <div class="alert-wood">⚠️ @TempData["Error"]</div>
+        <div class="alert-wood" role="alert">
+            ⚠️ @TempData["Error"]
+        </div>
         }
 
-        <form asp-action="CreateLobby" method="post">
-            <input asp-for="PlayerName" id="playerName" placeholder="Ваше имя, поселенец..." class="custom-input" required autocomplete="off" />
+        @* Форма создания новой комнаты *@
+        <form asp-action="CreateLobby" method="post" asp-antiforgery="true">
+            <input
+                asp-for="PlayerName"
+                id="playerName"
+                placeholder="Ваше имя, поселенец..."
+                class="custom-input"
+                required
+                autocomplete="off"
+                maxlength="20"
+                aria-label="Имя игрока" />
             <br />
-            <button type="submit" id="btnCreate" class="btn-wood" disabled>Основать колонию</button>
+            <button
+                type="submit"
+                id="btnCreate"
+                class="btn-wood"
+                disabled
+                aria-describedby="createHint">
+                Основать колонию
+            </button>
+            <small id="createHint" class="form-hint">Минимум 2 символа</small>
         </form>
 
         <hr class="divider" />
 
-        <form asp-action="JoinLobby" method="post">
-            <!-- Скрытое поле для имени, чтобы передать его вместе с кодом -->
-            <input type="hidden" name="PlayerName" class="name-mirror" />
-            <input asp-for="RoomCode" placeholder="Код порта..." class="custom-input" autocomplete="off" />
-            <button type="submit" id="btnJoin" class="btn-stone" disabled>Войти в гавань</button>
+        @* Форма присоединения к существующей комнате *@
+        <form asp-action="JoinLobby" method="post" asp-antiforgery="true">
+            <input
+                type="hidden"
+                name="PlayerName"
+                class="name-mirror"
+                aria-hidden="true" />
+            <input
+                asp-for="RoomCode"
+                placeholder="Код порта..."
+                class="custom-input"
+                autocomplete="off"
+                maxlength="4"
+                pattern="[0-9]{4}"
+                aria-label="Код комнаты" />
+            <button
+                type="submit"
+                id="btnJoin"
+                class="btn-stone"
+                disabled
+                aria-describedby="joinHint">
+                Войти в гавань
+            </button>
+            <small id="joinHint" class="form-hint">4 цифры</small>
         </form>
     </div>
 </div>
 
+@section Scripts {
 <script>
     const nameInput = document.getElementById('playerName');
     const btnCreate = document.getElementById('btnCreate');
     const btnJoin = document.getElementById('btnJoin');
     const nameMirrors = document.querySelectorAll('.name-mirror');
 
-    // 1. При загрузке восстанавливаем имя
+    // Восстановление имени из localStorage при загрузке
     document.addEventListener("DOMContentLoaded", () => {
         const savedName = localStorage.getItem('catan_playerName');
         if (savedName) {
@@ -53,7 +95,7 @@
         updateButtons(this.value);
     });
 
-    // 2. При клике на любую кнопку — сохраняем имя
+    // Сохранение имени в localStorage при отправке формы
     const saveName = () => {
         localStorage.setItem('catan_playerName', nameInput.value.trim());
     };
@@ -61,28 +103,115 @@
     btnCreate.addEventListener('click', saveName);
     btnJoin.addEventListener('click', saveName);
 </script>
+}
 
 <style>
-    /* Стиль для ошибки в духе игры */
-    .alert-wood { background: #ffebcd; color: #8b0000; border: 2px solid #8b4513; padding: 10px; margin-bottom: 15px; border-radius: 5px; font-weight: bold; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
-    
-    body { background-color: #e4d5b7; font-family: 'Georgia', serif; }
-    .game-title { color: #8b4513; font-size: 3rem; text-shadow: 2px 2px #fff; margin-top: 50px; }
-    .scroll-box { 
-        background: #fdf5e6; 
-        border: 10px solid #8b4513; 
-        border-radius: 15px; 
-        padding: 40px; 
-        width: 400px; 
-        margin: 0 auto; 
+    /* === Стиль для ошибки в духе игры === */
+    .alert-wood {
+        background: #ffebcd;
+        color: #8b0000;
+        border: 2px solid #8b4513;
+        padding: 10px;
+        margin-bottom: 15px;
+        border-radius: 5px;
+        font-weight: bold;
+    }
+
+    /* === Отключенные кнопки === */
+    button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        filter: grayscale(1);
+    }
+
+    /* === Базовые стили страницы === */
+    body {
+        background-color: #e4d5b7;
+        font-family: 'Georgia', serif;
+    }
+
+    /* === Заголовок игры === */
+    .game-title {
+        color: #8b4513;
+        font-size: 3rem;
+        text-shadow: 2px 2px #fff;
+        margin-top: 50px;
+    }
+
+    /* === Основной контейнер (свиток) === */
+    .scroll-box {
+        background: #fdf5e6;
+        border: 10px solid #8b4513;
+        border-radius: 15px;
+        padding: 40px;
+        width: 400px;
+        margin: 0 auto;
         box-shadow: 0 10px 20px rgba(0,0,0,0.3);
     }
-    .custom-input { 
-        padding: 10px; border: 2px solid #a0522d; border-radius: 5px; width: 80%; margin-bottom: 20px;
+
+    /* === Поля ввода === */
+    .custom-input {
+        padding: 10px;
+        border: 2px solid #a0522d;
+        border-radius: 5px;
+        width: 80%;
+        margin-bottom: 20px;
     }
-    .btn-wood { 
-        background: #a0522d; color: white; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer;
+
+    /* === Кнопка дерева (создание) === */
+    .btn-wood {
+        background: #a0522d;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-weight: bold;
+        cursor: pointer;
     }
-    .btn-wood:hover { background: #8b4513; }
+
+    .btn-wood:hover {
+        background: #8b4513;
+    }
+
+    /* === Кнопка камня (присоединение) === */
+    .btn-stone {
+        background: #696969;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .btn-stone:hover {
+        background: #4a4a4a;
+    }
+
+    /* === Разделитель === */
+    .divider {
+        border: 0;
+        height: 2px;
+        background: linear-gradient(to right, transparent, #8b4513, transparent);
+        margin: 25px 0;
+    }
+
+    /* === Подсказки под кнопками === */
+    .form-hint {
+        display: block;
+        color: #8b4513;
+        font-size: 0.85rem;
+        margin-top: 5px;
+        font-style: italic;
+    }
+
+    /* === Контейнер страницы === */
+    .main-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    /* === Центрирование текста === */
+    .text-center {
+        text-align: center;
+    }
 </style>
