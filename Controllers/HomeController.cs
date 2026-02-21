@@ -46,6 +46,12 @@ public class HomeController : Controller
             return RedirectToAction("Index");
         }
 
+        if (!_sessionService.IsAvalibaleToJoin(model.RoomCode))
+        {
+            TempData["Error"] = "В этой гавани уже максимальное кол-во игроков.";
+            return RedirectToAction("Index");
+        }
+
         // Проверка уникальности имени
         if (players.Any(p => p.Equals(model.PlayerName, StringComparison.OrdinalIgnoreCase)))
         {

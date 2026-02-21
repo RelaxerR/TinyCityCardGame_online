@@ -194,6 +194,8 @@ namespace TinyCityCardGame_online.Hubs
             // 3. Смена фазы и пополнение рынка (Конец круга)
             if (state.CurrentTurnIndex == 0)
             {
+                state.Players = [..state.Players.OrderBy(x => x.Coins)];
+                
                 state.RoundNumber++;
                 state.ActiveColor = (CardColor)new Random().Next(0, 4);
 
