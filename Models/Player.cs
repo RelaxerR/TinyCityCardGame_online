@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace TinyCityCardGame_online.Models;
 
 /// <summary>
@@ -29,7 +27,7 @@ public class Player
     /// <summary>
     /// Список карт в инвентаре игрока.
     /// </summary>
-    public List<Card?> Inventory { get; set; } = new();
+    public List<Card> Inventory { get; set; } = [];
 
     /// <summary>
     /// Флаг, указывающий, совершал ли игрок покупку в текущий ход.

@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace TinyCityCardGame_online.Models;
 
 /// <summary>

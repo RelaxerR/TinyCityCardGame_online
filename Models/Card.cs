@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace TinyCityCardGame_online.Models;
 
 /// <summary>
@@ -77,7 +75,7 @@ public class Card
     /// <summary>
     /// Вес вероятности появления карты на рынке (1-100).
     /// </summary>
-    public int Weight { get; init; } = 50;
+    public int Weight { get; set; } = 50;
 
     /// <summary>
     /// Инициализирует новый экземпляр класса Card.
@@ -152,7 +150,7 @@ public class Card
     public (string Command, string[] Parameters) ParseEffect()
     {
         if (string.IsNullOrWhiteSpace(Effect))
-            return (string.Empty, Array.Empty<string>());
+            return (string.Empty, []);
 
         var parts = Effect.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var command = parts.FirstOrDefault()?.ToUpper() ?? string.Empty;

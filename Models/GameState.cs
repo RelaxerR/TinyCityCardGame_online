@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace TinyCityCardGame_online.Models;
 
 /// <summary>
@@ -19,7 +17,7 @@ public class GameState
     /// <summary>
     /// Список игроков в текущей сессии.
     /// </summary>
-    public List<Player?> Players { get; set; } = [];
+    public List<Player> Players { get; set; } = [];
 
     /// <summary>
     /// Карты, доступные для покупки на рынке.
