@@ -164,15 +164,14 @@ public class GameSessionService
 
         var state = InitializeGameState(roomCode);
         InitializePlayers(state);
-        InitializeDeck(state);
         InitializeMarket(state);
         InitializeRound(state);
 
         _activeGames[roomCode] = state;
 
         _logger.LogInformation(
-            "Игра создана: {RoomCode}, {Players} игр., {Market} карт на рынке, {Deck} в колоде",
-            roomCode, state.Players.Count, state.Market.Count, state.Deck.Count);
+            "Игра создана: {RoomCode}, {Players} игр., {Market} карт на рынке",
+            roomCode, state.Players.Count, state.Market.Count);
 
         return state;
     }
@@ -185,7 +184,6 @@ public class GameSessionService
         RoomCode = roomCode,
         Players = [],
         Market = [],
-        Deck = [],
         TurnOrder = []
     };
 
@@ -213,63 +211,39 @@ public class GameSessionService
         _logger.LogInformation("Инициализировано {Count} игроков", state.Players.Count);
     }
 
-    /// <summary>
-    /// Инициализирует колоду карт.
-    /// </summary>
-    private void InitializeDeck(GameState state)
+    private int GetTotalWeight()
     {
-        if (_baseCards.Count == 0)
-        {
-            _logger.LogWarning("Базовый список карт пуст. Добавлена тестовая карта.");
-            _baseCards.Add(new Card 
-            { 
-                Name = "Ошибка Excel", 
-                Color = CardColor.Blue, 
-                Weight = 1, 
-                Effect = "GET 1" 
-            });
-        }
-
-        const int targetDeckSize = 100;
         var totalWeight = _baseCards.Sum(c => c.Weight);
 
-        if (totalWeight <= 0)
-        {
-            _logger.LogError("Сумма весов карт равна 0. Используется равномерное распределение.");
-            totalWeight = _baseCards.Count;
-            foreach (var card in _baseCards) card.Weight = 1;
-        }
-
-        var rng = new Random();
-        for (var i = 0; i < targetDeckSize; i++)
-        {
-            var card = SelectWeightedCard(rng, totalWeight);
-            if (card != null)
-            {
-                state.Deck.Add(CloneCard(card));
-            }
-        }
-
-        state.Deck = state.Deck.OrderBy(_ => rng.Next()).ToList();
-        _logger.LogInformation("Сгенерирована колода из {Count} карт", state.Deck.Count);
+        if (totalWeight > 0)
+            return totalWeight;
+        
+        _logger.LogError("Сумма весов карт равна 0. Используется равномерное распределение.");
+        totalWeight = _baseCards.Count;
+        foreach (var card in _baseCards) card.Weight = 1;
+        return totalWeight;
     }
-
+    
     /// <summary>
     /// Выбирает карту с учетом весов.
     /// </summary>
-    private Card? SelectWeightedCard(Random rng, int totalWeight)
+    private Card? SelectWeightedCard(Random rng, int roundNumber)
     {
-        var roll = rng.Next(0, totalWeight);
+        if (roundNumber <= 0) roundNumber = 1;
+        var roll = rng.Next(0, GetTotalWeight());
         var currentSum = 0;
 
-        foreach (var card in _baseCards)
+        var allowed = _baseCards.Where(x => x.Cost <= roundNumber).ToList();
+
+        foreach (var card in allowed)
         {
             currentSum += card.Weight;
             if (roll < currentSum)
                 return card;
         }
-
-        return _baseCards.FirstOrDefault();
+        var randomCard = rng.Next(0, allowed.Count);
+        
+        return allowed[randomCard];
     }
 
     /// <summary>
@@ -295,13 +269,13 @@ public class GameSessionService
     /// </summary>
     private void InitializeMarket(GameState state)
     {
+        var rnd = new Random();
         var targetSize = _settings.CalculateMarketSize(state.Players.Count);
 
-        while (state.Market.Count < targetSize && state.Deck.Count != 0)
+        while (state.Market.Count < targetSize)
         {
-            var card = state.Deck[0];
+            var card = SelectWeightedCard(rnd, state.RoundNumber);
             state.Market.Add(card);
-            state.Deck.RemoveAt(0);
         }
 
         _logger.LogInformation("Рынок заполнен: {Count} карт (цель: {Target})", state.Market.Count, targetSize);
@@ -312,12 +286,38 @@ public class GameSessionService
     /// </summary>
     private void InitializeRound(GameState state)
     {
-        var rng = new Random();
-        state.ActiveColor = (CardColor)rng.Next(0, 4);
+        state.ActiveColor = GetRandomColor();
         state.RoundNumber = 1;
         state.CurrentTurnIndex = 0;
+        
+        state.Players = state.Players.OrderBy(p => p.Coins).ToList();
+        state.TurnOrder = state.Players.Select(p => p.Name).ToList();
 
         _logger.LogInformation("Начальный активный цвет: {Color}", state.ActiveColor);
+    }
+
+    private CardColor GetRandomColor()
+    {
+        var rng = new Random();
+
+        // 1. Считаем общую сумму всех шансов
+        var totalWeight = _settings.ColorChanceBlue + _settings.ColorChanceGold + 
+                          _settings.ColorChanceRed + _settings.ColorChancePurple;
+
+        // 2. Бросаем кубик
+        var roll = rng.Next(0, totalWeight);
+
+        // 3. Определяем, в какой диапазон попало число
+        if (roll < _settings.ColorChanceBlue) 
+            return CardColor.Blue;
+        if (roll < _settings.ColorChanceBlue + _settings.ColorChanceGold) 
+            return CardColor.Gold;
+        if (roll < _settings.ColorChanceBlue + _settings.ColorChanceGold + _settings.ColorChanceRed) 
+            return CardColor.Red;
+        else 
+            return CardColor.Purple;
+
+
     }
 
     /// <summary>
@@ -326,13 +326,13 @@ public class GameSessionService
     /// <param name="state">Состояние игры.</param>
     public void ReplenishMarket(GameState state)
     {
+        var rnd = new Random();
         var targetSize = _settings.CalculateMarketSize(state.Players.Count);
 
-        while (state.Market.Count < targetSize && state.Deck.Count != 0)
+        while (state.Market.Count < targetSize)
         {
-            var card = state.Deck[0];
+            var card = SelectWeightedCard(rnd, state.RoundNumber);
             state.Market.Add(card);
-            state.Deck.RemoveAt(0);
         }
 
         _logger.LogDebug("Рынок пополнен до {Count} карт", state.Market.Count);

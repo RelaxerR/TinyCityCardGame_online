@@ -25,11 +25,6 @@ public class GameState
     public List<Card> Market { get; set; } = [];
 
     /// <summary>
-    /// Колода карт для пополнения рынка.
-    /// </summary>
-    public List<Card> Deck { get; set; } = [];
-
-    /// <summary>
     /// Активный цвет текущего раунда, определяющий активируемые карты.
     /// </summary>
     public CardColor ActiveColor { get; set; }
@@ -189,29 +184,10 @@ public class GameState
         {
             player?.ResetTurnState();
         }
+        
+        UpdateTurnOrder();
 
         _logger?.LogInformation("Начат раунд #{RoundNumber} в комнате {RoomCode}", RoundNumber, RoomCode);
-    }
-
-    /// <summary>
-    /// Добавляет карты на рынок из колоды.
-    /// </summary>
-    /// <param name="targetSize">Целевое количество карт на рынке.</param>
-    public void ReplenishMarket(int targetSize)
-    {
-        while (Market.Count < targetSize && Deck.Count > 0)
-        {
-            var card = Deck.FirstOrDefault();
-            if (card == null)
-                continue;
-            
-            Deck.Remove(card);
-            Market.Add(card);
-            _logger?.LogDebug("Карта {CardName} добавлена на рынок", card.Name);
-        }
-
-        _logger?.LogInformation("Рынок пополнен. На рынке {MarketCount} карт из {TargetSize}", 
-            Market.Count, targetSize);
     }
 
     /// <summary>

@@ -168,7 +168,6 @@ public class GameHub : Hub
         currentPlayer = state.TurnOrder[state.CurrentTurnIndex],
         players = state.Players,
         roundNumber = state.RoundNumber,
-        deckCount = state.Deck.Count
     };
 
     /// <summary>
@@ -467,6 +466,8 @@ public class GameHub : Hub
         }
 
         _sessionService.ReplenishMarket(state);
+        
+        state.UpdateTurnOrder();
 
         _logger.LogInformation("Начат раунд {Round} в комнате {RoomCode}. Активный цвет: {Color}", 
             state.RoundNumber, roomCode, state.ActiveColor);

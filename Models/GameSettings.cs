@@ -46,7 +46,12 @@ public class GameSettings
     /// Формула расчета размера рынка.
     /// </summary>
     public string MarketSizeFormula { get; set; } = "{players_count} + 1";
-
+    
+    public int ColorChanceBlue { get; set; } = 50;
+    public int ColorChanceRed { get; set; } = 25;
+    public int ColorChancePurple { get; set; } = 5;
+    public int ColorChanceGold { get; set; } = 30;
+    
     /// <summary>
     /// Инициализирует новый экземпляр класса GameSettings.
     /// </summary>

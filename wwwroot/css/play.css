@@ -6,17 +6,19 @@
 /* === БАЗОВЫЕ СТИЛИ ИГРОВОГО ПОЛЯ === */
 .game-board {
     background: linear-gradient(135deg, #e4d5b7 0%, #f5deb3 100%);
-    height: 100vh;
-    padding: 20px;
+    height: 100vh; /* Занимаем ровно 100% высоты экрана */
+    padding: 10px 20px; /* Чуть уменьшили padding для экономии места */
     display: flex;
     flex-direction: column;
-    gap: 30px;
+    gap: 15px; /* Уменьшили отступы между зонами */
     box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.5);
-    overflow-y: auto;
+    overflow: hidden; /* ВАЖНО: Скролл внутри доски отключаем */
+    box-sizing: border-box;
 }
 
 .top-bar {
     display: flex;
+    flex: 0 0 auto;
     justify-content: space-between;
     align-items: center;
     background: rgba(255, 255, 255, 0.3);
@@ -111,13 +113,16 @@
 }
 
 .card-header {
-    height: 35px;
+    /*height: 35px;*/
+    flex-shrink: 0;
+    word-wrap: break-word;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
+    /*font-size: 0.9rem;*/
     font-weight: bold;
     padding: 0 5px;
+    margin: 20px;
     text-align: center;
     color: #fff;
 }
@@ -128,17 +133,18 @@
 .card-header.purple { background: #9b59b6; }
 
 .card-body {
-    flex-grow: 1;
+    flex-grow: 10;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 5px;
+    min-height: 0;
 }
 
 .img-container {
-    width: 100%;
-    height: 200px;
+    /*width: 100%;*/
+    height: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -166,6 +172,7 @@
 }
 
 .card-footer {
+    display: flex;
     height: 60px;
     background: rgba(139, 69, 19, 0.1);
     border-top: 1px solid rgba(139, 69, 19, 0.3);
@@ -178,6 +185,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
+    flex-shrink: 0;    /* Запрещает заголовку и футеру сжиматься до невидимости */
 }
 
 .no-icon {
@@ -187,22 +195,26 @@
 
 /* === РЫНОК === */
 .market-zone {
+    flex: 1 1 auto; /* Растягивается, но может сжиматься */
+    min-height: 0;  /* КРИТИЧЕСКИ ВАЖНО для работы скролла внутри flex-элемента */
+    overflow-y: auto; /* Скролл только внутри зоны рынка */
     display: flex;
-    gap: 20px;
     justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
+    align-items: center; /* Центрируем карты, если их мало */
+    padding: 10px;
 }
 
 .open-market {
-    display: flex;
-    gap: 25px;
-    padding: 30px;
+    /* Убираем min-height, чтобы не конфликтовал с flex */
+    min-height: auto;
+    padding: 20px;
     background: rgba(0, 0, 0, 0.15);
     border-radius: 20px;
-    min-height: 320px;
-    align-items: center;
+    display: flex;
+    gap: 25px;
     flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
 }
 
 .deck-stack {
@@ -251,6 +263,13 @@
 
 /* Анимация появления карт */
 .market-card-anim {
+    display: flex;
+    flex-direction: column;
+    width: 250px;       /* Или любая ваша ширина */
+    height: 350px;      /* Ваша фиксированная высота */
+    padding: 10px;
+    box-sizing: border-box; /* Чтобы padding не увеличивал размер карты */
+    
     animation: slideInFromDeck 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -261,11 +280,16 @@
 
 /* === ИНВЕНТАРЬ ИГРОКА (FLIP-КАРТЫ) === */
 .player-hand-section {
-    margin-top: auto;
+    flex: 0 0 auto; /* Не сжимать и не растягивать */
+    margin-top: 0; /* Убираем auto, так как flex порядок сам поставит его вниз */
     background: #f5f5dc;
-    padding: 20px;
-    border-radius: 20px 20px 0 0;
+    padding: 10px 20px;
+    border-radius: 15px 15px 0 0;
     border-top: 5px solid #a0522d;
+    max-height: 35vh; /* Ограничиваем высоту руки (35% от экрана) */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Скролл будет внутри my-cards */
 }
 
 .player-hand-section h3 {
@@ -277,10 +301,11 @@
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    padding: 15px;
+    padding: 10px;
     justify-content: flex-start;
-    max-height: 400px;
-    overflow-y: auto;
+    overflow-y: auto; /* Внутренний скролл для карт */
+    flex-grow: 1;
+    min-height: 0;
 }
 
 .card-mini-container {
