@@ -3,6 +3,7 @@ using TinyCityCardGame_online.Hubs;
 using TinyCityCardGame_online.Models;
 using TinyCityCardGame_online.Services;
 using System.Text.Json.Serialization;
+using TinyCityCardGame_online.Analitics.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,9 @@ builder.Services.AddSignalR()
 builder.Services.AddSingleton<CardLoader>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.Configure<GameSettings>(builder.Configuration.GetSection("GameBalance"));
+
+// Регистрируем сервисы симуляции
+builder.Services.AddSingleton<CardProbabilityCalculator>();
 
 // Регистрируем логгер для отладки игровых событий
 builder.Logging.ClearProviders();
@@ -78,6 +82,13 @@ app.MapControllerRoute(
 
 // SignalR хаб для real-time коммуникации
 app.MapHub<GameHub>("/gameHub");
+
+// ============================================================================
+// 🚀 Запуск расчета вероятностей после старта
+// ============================================================================
+
+var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
+_ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
 
 // ============================================================================
 // 📝 Логирование запуска
