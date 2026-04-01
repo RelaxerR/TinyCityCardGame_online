@@ -121,8 +121,7 @@
     justify-content: center;
     /*font-size: 0.9rem;*/
     font-weight: bold;
-    padding: 0 5px;
-    margin: 20px;
+    padding: 5px;
     text-align: center;
     color: #fff;
 }
@@ -143,8 +142,8 @@
 }
 
 .img-container {
-    /*width: 100%;*/
-    height: 50%;
+    width: 100%;
+    /*height: 50%;*/
     display: flex;
     align-items: center;
     justify-content: center;
@@ -286,7 +285,7 @@
     padding: 10px 20px;
     border-radius: 15px 15px 0 0;
     border-top: 5px solid #a0522d;
-    max-height: 35vh; /* Ограничиваем высоту руки (35% от экрана) */
+    max-height: 40vh; /* Ограничиваем высоту руки (35% от экрана) */
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Скролл будет внутри my-cards */
@@ -311,7 +310,7 @@
 .card-mini-container {
     perspective: 1000px;
     width: 130px;
-    height: 240px;
+    height: 250px;
     margin: 8px;
     cursor: default;
     position: relative;
@@ -760,6 +759,11 @@ body.log-collapsed .log-open-btn {
 }
 
 /* === АДАПТИВНОСТЬ === */
+@media (max-width: 920px) {
+    .card-item {
+        width: 150px;
+    }
+}
 @media (max-width: 768px) {
     .game-board {
         padding: 10px;
@@ -786,7 +790,7 @@ body.log-collapsed .log-open-btn {
 
     .card-item {
         width: 120px;
-        height: 200px;
+        height: 300px;
     }
 
     .log-container {
@@ -796,6 +800,7 @@ body.log-collapsed .log-open-btn {
     }
 
     .player-hand-section {
+        max-height: 30vh;
         padding: 10px;
     }
 
