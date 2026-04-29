@@ -43,6 +43,7 @@ public class GameSessionService
             return;
         
         _rooms[roomCode] = [];
+        _logger.LogInformation("[SYSTEM] Комната {RoomCode} создана. Ожидание игроков...", roomCode);
         _logger.LogInformation("Создана новая комната {RoomCode}", roomCode);
     }
 
@@ -203,6 +204,7 @@ public class GameSessionService
                  }))
         {
             state.Players.Add(player);
+            _logger.LogDebug("[SYSTEM] Игрок {Name} инициализирован. Старт: {Coins}💰", player.Name, player.Coins);
         }
 
         state.Players = state.Players.OrderBy(p => p.Coins).ToList();
@@ -275,6 +277,7 @@ public class GameSessionService
         while (state.Market.Count < targetSize)
         {
             var card = SelectWeightedCard(rnd, state.RoundNumber);
+            _logger.LogDebug("[SYSTEM] На рынок добавлена: {CardName} (Вес: {Weight}, Раунд: {Round})", card.Name, card.Weight, state.RoundNumber);
             state.Market.Add(card);
         }
 
@@ -332,6 +335,7 @@ public class GameSessionService
         while (state.Market.Count < targetSize)
         {
             var card = SelectWeightedCard(rnd, state.RoundNumber);
+            _logger.LogDebug("[SYSTEM] На рынок добавлена: {CardName} (Вес: {Weight}, Раунд: {Round})", card.Name, card.Weight, state.RoundNumber);
             state.Market.Add(card);
         }
 

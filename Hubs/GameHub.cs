@@ -43,6 +43,9 @@ public class GameHub : Hub
             return;
 
         await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
+        await Clients.Caller.SendAsync("ShowMessage", $"👋 Добро пожаловать в порт {roomCode}, {userName}!", "info");
+        _logger.LogInformation("[SYSTEM] Игрок {User} успешно подключен к группе {Room}", userName, roomCode);
+        
         _sessionService.AddPlayer(roomCode, userName, Context.ConnectionId);
 
         var allPlayers = _sessionService.GetPlayers(roomCode);
@@ -110,6 +113,8 @@ public class GameHub : Hub
 
         _sessionService.CreateGame(roomCode);
         await Clients.Group(roomCode).SendAsync("GameStarted");
+        await Clients.Group(roomCode).SendAsync("ShowMessage", "⚓ Игра началась! Рынок открыт, первый ход скоро.", "important");
+        _logger.LogInformation("[SYSTEM] Игра стартована в комнате {Room}. Игроков: {Count}", roomCode, _sessionService.GetPlayerCount(roomCode));
 
         _logger.LogInformation("Игра запущена в комнате {RoomCode}", roomCode);
     }
@@ -185,6 +190,7 @@ public class GameHub : Hub
 
         var player = GetCurrentPlayer(state);
         var card = player?.Inventory.FirstOrDefault(c => c.Id == cardId);
+        if (card != null) _logger.LogDebug("[SYSTEM] Попытка активации: {Player} -> {CardName} ({Color})", player.Name, card.Name, card.Color);
 
         if (!CanActivateCard(card, state))
         {
@@ -195,6 +201,8 @@ public class GameHub : Hub
         try
         {
             await ExecuteEffect(card, card!.Effect, player!, state, roomCode);
+            await SendGameMessage(roomCode, $"✨ {player.Name} активирует: {card.Name} [{card.Color}]", "gold");
+            
             card.IsUsed = true;
 
             if (player != null && CheckWinCondition(player, roomCode).Result)
@@ -540,7 +548,7 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает логику завершения хода.
     /// </summary>
-    private void ProcessTurnEnd(GameState state, string roomCode)
+    private async void ProcessTurnEnd(GameState state, string roomCode)
     {
         state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
         
@@ -549,6 +557,8 @@ public class GameHub : Hub
             return;
 
         nextPlayer.Coins += _settings.DailyIncome;
+        await SendGameMessage(roomCode, $"🌅 {nextPlayer.Name} получает ежедневный доход: +{_settings.DailyIncome}💰", "gold");
+        
         nextPlayer.HasBoughtThisTurn = false;
 
         if (state.CurrentTurnIndex == 0)
@@ -562,10 +572,12 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает начало нового раунда.
     /// </summary>
-    private void ProcessNewRound(GameState state, string roomCode)
+    private async void ProcessNewRound(GameState state, string roomCode)
     {
         state.RoundNumber++;
         state.ActiveColor = (CardColor)new Random().Next(0, 4);
+        await SendGameMessage(roomCode, $"🎨 Новый раунд! Активный цвет: {state.ActiveColor}", "important");
+        _logger.LogInformation("[SYSTEM] Раунд {Round}. Активный цвет: {Color}", state.RoundNumber, state.ActiveColor);
 
         foreach (var player in state.Players)
         {
@@ -573,6 +585,7 @@ public class GameHub : Hub
         }
 
         _sessionService.ReplenishMarket(state);
+        await SendGameMessage(roomCode, "📦 Рынок пополнен новыми картами.", "info");
         
         state.UpdateTurnOrder();
 
@@ -598,9 +611,14 @@ public class GameHub : Hub
                 return;
 
             var card = state.Market.FirstOrDefault(c => c.Id == cardId);
+            if (card != null && player != null && !player.CanAfford(card.Cost))
+            {
+                await SendGameMessage(roomCode, $"❌ {player.Name}: недостаточно корма для '{card.Name}'!", "important");
+                return;
+            }
             if (card != null && player.CanAfford(card.Cost))
             {
-                ProcessCardPurchase(player, card, state);
+                ProcessCardPurchase(roomCode, player, card, state);
                 // !!! Обновляем любимый цвет после покупки !!!
                 player.LastBoughtColor = card.Color;
                 player.UpdateFavoriteColor();
@@ -616,12 +634,15 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает покупку карты.
     /// </summary>
-    private void ProcessCardPurchase(Player player, Card card, GameState state)
+    private async void ProcessCardPurchase(string roomCode, Player player, Card card, GameState state)
     {
         player.SpendCoins(card.Cost);
         player.HasBoughtThisTurn = true;
         player.AddCardToInventory(card);
         state.Market.Remove(card);
+        
+        await SendGameMessage(roomCode, $"🛒 {player.Name} приобрел карту '{card.Name}' за {card.Cost}💰", "important");
+        _logger.LogDebug("[SYSTEM] Покупка завершена: {Player} -> {Card}. Баланс: {Coins}", player.Name, card.Name, player.Coins);
 
         _logger.LogInformation("Игрок {PlayerName} купил карту {CardName} за {Cost} монет", 
             player.Name, card.Name, card.Cost);
