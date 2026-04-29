@@ -145,21 +145,34 @@ public class GameBalanceAnalyzer
         var results = new List<GameSimulationResult>();
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        for (int i = 0; i < gameSimulations; i++)
+        try
         {
-            results.Add(SimulateFullGame(i));
-            
-            if (i % 100 == 0 && i > 0)
-                _logger.LogDebug("Прогресс: {Completed}/{Total} игр", i, gameSimulations);
-        }
+            for (int i = 0; i < gameSimulations; i++)
+            {
+                results.Add(SimulateFullGame(i));
+                
+                // show visible progress (Information level)
+                if (i % 100 == 0 && i > 0)
+                    _logger.LogInformation("Прогресс: {Completed}/{Total} игр", i, gameSimulations);
 
-        stopwatch.Stop();
-        
-        var report = CompileReport(results, stopwatch.Elapsed);
-        PrintReport(report);
-        
-        _logger.LogInformation("✅ Анализ завершён за {ElapsedMs} мс", stopwatch.ElapsedMilliseconds);
-        return report;
+                // yield periodically so the scheduler/logs can flush and other work can run
+                if (i % 10 == 0)
+                    await Task.Yield();
+            }
+
+            stopwatch.Stop();
+            
+            var report = CompileReport(results, stopwatch.Elapsed);
+            PrintReport(report);
+            
+            _logger.LogInformation("✅ Анализ завершён за {ElapsedMs} мс", stopwatch.ElapsedMilliseconds);
+            return report;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при выполнении анализа баланса");
+            throw;
+        }
     }
 
     /// <summary>
@@ -337,7 +350,8 @@ public class GameBalanceAnalyzer
         int round,
         int gameId)
     {
-        foreach (var card in player.Inventory.Where(c => c.Color == activeColor && !c.IsUsed))
+        // Take a snapshot of matching cards to avoid collection-modified exceptions
+        foreach (var card in player.Inventory.Where(c => c.Color == activeColor && !c.IsUsed).ToList())
         {
             card.IsUsed = true;
             cardActivations.AddActivation(card.Id, card.Color, card.Cost, card.Reward, true);

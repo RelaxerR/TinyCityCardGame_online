@@ -90,7 +90,20 @@ app.MapHub<GameHub>("/gameHub");
 // ============================================================================
 
 var analyzer = app.Services.GetRequiredService<GameBalanceAnalyzer>();
-_ = Task.Run(async () => await analyzer.RunFullAnalysis(1000));
+
+// Run in background and capture exceptions; use smaller count for quick debug (change back to 1000 after verification)
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await analyzer.RunFullAnalysis(10000); // use 100 for testing; set to 1000 for full runs
+    }
+    catch (Exception ex)
+    {
+        var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+        startupLogger.LogError(ex, "❌ Balance analyzer background task failed");
+    }
+});
 
 // var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
 // _ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
