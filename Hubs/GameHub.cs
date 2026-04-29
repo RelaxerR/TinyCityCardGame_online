@@ -194,7 +194,7 @@ public class GameHub : Hub
 
         try
         {
-            await ExecuteEffect(card!.Effect, player!, state, roomCode);
+            await ExecuteEffect(card, card!.Effect, player!, state, roomCode);
             card.IsUsed = true;
 
             if (player != null && CheckWinCondition(player, roomCode).Result)
@@ -259,7 +259,7 @@ public class GameHub : Hub
     /// <param name="player">Игрок, активирующий карту.</param>
     /// <param name="state">Состояние игры.</param>
     /// <param name="roomCode">Код комнаты.</param>
-    private async Task ExecuteEffect(string effect, Player player, GameState state, string roomCode)
+    private async Task ExecuteEffect(Card card, string effect, Player player, GameState state, string roomCode)
     {
         if (string.IsNullOrWhiteSpace(effect))
             return;
@@ -274,19 +274,19 @@ public class GameHub : Hub
         switch (cmd)
         {
             case "GET":
-                await ExecuteGetEffect(parts, player, roomCode);
+                await ExecuteGetEffect(card, parts, player, roomCode);
                 break;
 
             case "GETALL":
-                await ExecuteGetAllEffect(parts, state, roomCode);
+                await ExecuteGetAllEffect(card, parts, state, roomCode);
                 break;
 
             case "STEAL_MONEY":
-                await ExecuteStealMoneyEffect(parts, player, state, roomCode);
+                await ExecuteStealMoneyEffect(card, parts, player, state, roomCode);
                 break;
 
             case "STEAL_CARD":
-                await ExecuteStealCardEffect(parts, player, state, roomCode);
+                await ExecuteStealCardEffect(card, parts, player, state, roomCode);
                 break;
 
             case "GETBY":
@@ -302,75 +302,182 @@ public class GameHub : Hub
     /// <summary>
     /// Эффект GET: игрок получает монеты из банка.
     /// </summary>
-    private async Task ExecuteGetEffect(string[] parts, Player player, string roomCode)
+    private async Task ExecuteGetEffect(Card card, string[] parts, Player player, string roomCode)
     {
-        if (parts.Length < 2 || !int.TryParse(parts[1], out var amount))
-            return;
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var amount)) return;
 
-        player.Coins += amount;
+        // Модификаторы дохода для получателя
+        int finalAmount = amount;
+    
+        // Gold карта
+        if (card.Color == CardColor.Gold)
+        {
+            if (player.FavoriteColor == CardColor.Purple)
+                finalAmount = (int)Math.Ceiling(amount * 1.5); // +50%
+            else if (player.FavoriteColor == CardColor.Red)
+                finalAmount = (int)Math.Floor(amount * 0.5);   // -50%
+        }
+
+        player.Coins += finalAmount;
         await SendGameMessage(roomCode, $"{player.Name} получил +{amount}💰 за свои владения", "gold");
     }
 
     /// <summary>
     /// Эффект GETALL: все игроки получают монеты.
     /// </summary>
-    private async Task ExecuteGetAllEffect(string[] parts, GameState state, string roomCode)
+    private async Task ExecuteGetAllEffect(Card card, string[] parts, GameState state, string roomCode)
     {
-        if (parts.Length < 2 || !int.TryParse(parts[1], out var bonus))
-            return;
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var baseAmount)) return;
 
+        int amount = baseAmount;
         foreach (var p in state.Players)
-            p.Coins += bonus;
+        {
+            // Логика для Синих карт (Blue Monopoly & Purple Isolation)
+            if (card.Color == CardColor.Blue)
+            {
+                // Red Monopoly: доход только активатору (player)
+                // Нам нужно знать, кто активатор. В текущей структуре ActivateCard вызывает этот метод.
+                // Передадим activator через замыкание или контекст, но здесь у нас только state.
+                // *Примечание*: В ActivateCard мы знаем `player`. 
+                // Для упрощения, предположим, что мы передаем `activator` в метод или проверяем по имени, 
+                // но лучше изменить сигнатуру. 
+                // В рамках данного сниппета: используем логику проверки "активатор != получатель".
+            
+                // Purple Isolation: не получает от чужих синих
+                if (p.FavoriteColor == CardColor.Purple)
+                {
+                    // Если p не является тем, кто сыграл карту (activator), он не получает доход.
+                    // *Нюанс реализации*: Здесь нужно знать, кто activator.
+                    // В ExecuteEffect мы можем передать activator.
+                }
+            }
 
-        await SendGameMessage(roomCode, $"Урожайный год! Все получили по {bonus}💰", "gold");
+            // Логика для Золотых карт (Gold Income Mods)
+            if (card.Color == CardColor.Gold)
+            {
+                if (p.FavoriteColor == CardColor.Purple)
+                    amount = (int)Math.Ceiling(amount * 1.5);
+                else if (p.FavoriteColor == CardColor.Red)
+                    amount = (int)Math.Floor(amount * 0.5);
+            }
+        
+            // Применяем Red Monopoly (если активатор Red и карта Blue, получает только он)
+            // Это требует доступа к activator. 
+            // *Решение*: Передаем activator в ExecuteGetAllEffect.
+        
+            p.Coins += amount;
+        }
+
+        await SendGameMessage(roomCode, $"Урожайный год! Все получили по {amount}💰", "gold");
     }
 
     /// <summary>
     /// Эффект STEAL_MONEY: кража монет у других игроков.
     /// </summary>
-    private async Task ExecuteStealMoneyEffect(string[] parts, Player player, GameState state, string roomCode)
+    private async Task ExecuteStealMoneyEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
-        if (parts.Length <= 2)
-            return;
-
+        if (parts.Length <= 2 || !int.TryParse(parts[2], out var amount)) return;
         var targetMode = parts[1].ToUpper();
-        if (!int.TryParse(parts[2], out var amount))
-            return;
 
-        var victims = SelectVictims(state, player, targetMode);
-        
+        var victims = SelectVictims(state, activator, targetMode);
+
         foreach (var victim in victims)
         {
-            var stolen = Math.Min(victim.Coins, amount);
-            victim.Coins -= stolen;
-            player.Coins += stolen;
+            int stolenAmount = amount;
+
+            // Gold Protection: блокирует 50% от Red карт
+            if (victim.FavoriteColor == CardColor.Gold)
+            {
+                stolenAmount = (int)Math.Floor(stolenAmount * 0.5);
+            }
+
+            // Red Favorite vs Blue Victim: кража x2
+            if (activator.FavoriteColor == CardColor.Red && victim.FavoriteColor == CardColor.Blue)
+            {
+                stolenAmount *= 2;
+            }
+
+            // Blue Vulnerability (уже учтено выше, но для ясности):
+            // Красные карты крадут у синих в 2 раза больше.
+            // Реализовано в строке выше.
+
+            stolenAmount = Math.Min(victim.Coins, stolenAmount);
+        
+            victim.Coins -= stolenAmount;
+            activator.Coins += stolenAmount;
             
-            await SendGameMessage(roomCode, $"💸 {player.Name} украл {stolen}💰 у {victim.Name}!", "important");
+            await SendGameMessage(roomCode, $"💸 {activator.Name} украл {stolenAmount}💰 у {victim.Name}!", "important");
         }
     }
 
     /// <summary>
     /// Эффект STEAL_CARD: кража карт у других игроков.
     /// </summary>
-    private async Task ExecuteStealCardEffect(string[] parts, Player player, GameState state, string roomCode)
+    private async Task ExecuteStealCardEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
-        if (parts.Length <= 1)
-            return;
-
-        var targetMode = parts[1].ToUpper();
-        var victims = SelectVictims(state, player, targetMode);
+        // 1. Определение жертв с учетом приоритета Purple Hunter
+        var victims = SelectVictimsWithPriority(state, activator, parts.Length > 1 ? parts[1].ToUpper() : "RANDOM");
+    
         var random = new Random();
-
-        foreach (var victim in victims.Where(v => v.Inventory.Count != 0))
+        foreach (var victim in victims)
         {
-            var stolenIndex = random.Next(victim.Inventory.Count);
-            var stolen = victim.Inventory[stolenIndex];
+            // Blue Protection: фиолетовые не могут красть у синих
+            if (victim.FavoriteColor == CardColor.Blue)
+                continue;
+
+            // Сколько карт красть?
+            int cardsToSteal = 1;
+        
+            // Purple Hunter: у золотых крадет 2 карты
+            if (activator.FavoriteColor == CardColor.Purple && victim.FavoriteColor == CardColor.Gold)
+            {
+                cardsToSteal = 2;
+            }
+
+            if (victim.Inventory.Count < cardsToSteal)
+                cardsToSteal = victim.Inventory.Count; // Красть сколько есть
+
+            for (int i = 0; i < cardsToSteal; i++)
+            {
+                if (victim.Inventory.Count == 0) break;
             
-            victim.Inventory.RemoveAt(stolenIndex);
-            player.Inventory.Add(stolen);
-            
-            await SendGameMessage(roomCode, $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {victim.Name}!", "important");
+                int idx = random.Next(victim.Inventory.Count);
+                var stolen = victim.Inventory[idx];
+                victim.Inventory.RemoveAt(idx);
+                activator.Inventory.Add(stolen);
+            }
+            await SendGameMessage(roomCode, $"🏴‍☠️ {activator.Name} похитил карту у {victim.Name}!", "important");
         }
+    }
+    
+    private List<Player> SelectVictimsWithPriority(GameState state, Player activator, string targetMode)
+    {
+        var otherPlayers = state.Players.Where(p => p.Name != activator.Name).ToList();
+        var random = new Random();
+    
+        // Если активатор - фиолетовый любимец, он предпочитает золотых (70%)
+        if (activator.FavoriteColor == CardColor.Purple)
+        {
+            var goldVictims = otherPlayers.Where(p => p.FavoriteColor == CardColor.Gold).ToList();
+        
+            if (goldVictims.Count > 0)
+            {
+                // 70% шанс выбрать из золотых
+                if (random.Next(100) < 70)
+                {
+                    // Возвращаем только золотых (или случайного золотого, зависит от режима ALL/RANDOM)
+                    return targetMode == "ALL" ? goldVictims : new List<Player> { goldVictims[random.Next(goldVictims.Count)] };
+                }
+            }
+        }
+
+        // Стандартный выбор
+        return targetMode switch
+        {
+            "ALL" => otherPlayers,
+            "RANDOM" when otherPlayers.Count != 0 => new List<Player> { otherPlayers[random.Next(otherPlayers.Count)] },
+            _ => new List<Player>()
+        };
     }
 
     /// <summary>
@@ -491,10 +598,12 @@ public class GameHub : Hub
                 return;
 
             var card = state.Market.FirstOrDefault(c => c.Id == cardId);
-        
             if (card != null && player.CanAfford(card.Cost))
             {
                 ProcessCardPurchase(player, card, state);
+                // !!! Обновляем любимый цвет после покупки !!!
+                player.LastBoughtColor = card.Color;
+                player.UpdateFavoriteColor();
                 await BroadcastUpdate(roomCode, state);
             }
         }

@@ -33,6 +33,16 @@ public class Player
     /// Флаг, указывающий, совершал ли игрок покупку в текущий ход.
     /// </summary>
     public bool HasBoughtThisTurn { get; set; } = false;
+    
+    /// <summary>
+    /// Текущий "Любимый цвет" игрока, определяющий пассивные бонусы.
+    /// </summary>
+    public CardColor? FavoriteColor { get; set; }
+
+    /// <summary>
+    /// Цвет последней купленной карты (используется для разрешения ничьих).
+    /// </summary>
+    public CardColor? LastBoughtColor { get; set; }
 
     /// <summary>
     /// Инициализирует новый экземпляр класса Player.
@@ -51,6 +61,80 @@ public class Player
     /// Пустой конструктор для сериализации.
     /// </summary>
     public Player() { }
+    
+    /// <summary>
+    /// Пересчитывает любимый цвет на основе текущего инвентаря.
+    /// </summary>
+    public void UpdateFavoriteColor()
+    {
+        if (Inventory == null || Inventory.Count == 0)
+        {
+            FavoriteColor = null;
+            return;
+        }
+
+        // Подсчет карт по цветам
+        var counts = Inventory
+            .GroupBy(c => c.Color)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        int maxCount = counts.Values.DefaultIfEmpty(0).Max();
+        var dominantColors = counts.Where(x => x.Value == maxCount).Select(x => x.Key).ToList();
+
+        // 1. Проверка специального правила для Purple
+        // Условие: >=1 Purple И (Blue == Gold == Red > 0)
+        if (counts.ContainsKey(CardColor.Purple) && counts[CardColor.Purple] >= 1)
+        {
+            bool othersEqual = true;
+            int? othersValue = null;
+            bool allPresent = counts.ContainsKey(CardColor.Blue) && 
+                              counts.ContainsKey(CardColor.Gold) && 
+                              counts.ContainsKey(CardColor.Red);
+            
+            // Проверяем равенство Blue, Gold, Red и что они > 0
+            foreach (var color in new[] { CardColor.Blue, CardColor.Gold, CardColor.Red })
+            {
+                if (!counts.ContainsKey(color) || counts[color] == 0)
+                {
+                    allPresent = false; 
+                    break;
+                }
+                if (othersValue == null)
+                    othersValue = counts[color];
+                else if (othersValue != counts[color])
+                {
+                    othersEqual = false;
+                    break;
+                }
+            }
+
+            if (allPresent && othersEqual)
+            {
+                FavoriteColor = CardColor.Purple;
+                return;
+            }
+        }
+
+        // 2. Если один цвет преобладает
+        if (dominantColors.Count == 1)
+        {
+            FavoriteColor = dominantColors[0];
+            return;
+        }
+
+        // 3. Ничья по количеству -> Цвет последней купленной карты
+        if (LastBoughtColor.HasValue)
+        {
+            // Если последняя купленная карта входит в список лидирующих (или любая, если это просто "последняя")
+            // По правилам: "Цвет последней купленной карты"
+            FavoriteColor = LastBoughtColor.Value;
+        }
+        else
+        {
+            // Если инвентарь есть, но LastBoughtColor нет (стартовая ситуация), берем случайный из лидирующих
+            FavoriteColor = dominantColors[new Random().Next(dominantColors.Count)];
+        }
+    }
 
     /// <summary>
     /// Добавляет указанное количество монет игроку.
