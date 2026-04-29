@@ -73,11 +73,40 @@ function updatePlayersList(players, myName, currentPlayerName) {
 
     playersDiv.innerHTML = players.map(p => {
         const isTurn = p.name === currentPlayerName;
+        const isMe = p.name === myName;
+
+        // Формируем HTML для любимого цвета, если он есть
+        let favColorHtml = '';
+        if (p.favoriteColor) {
+            const colorClass = p.favoriteColor.toLowerCase();
+            const icons = {
+                'blue': '🔵',
+                'gold': '🟡',
+                'red': '🔴',
+                'purple': '🟣'
+            };
+            const icon = icons[colorClass] || '⚪';
+            // Используем title для подсказки с описанием эффекта
+            const tooltip = getFavoriteColorTooltip(p.favoriteColor);
+            favColorHtml = `<span class="fav-color-indicator" title="${tooltip}">${icon}</span>`;
+        }
+
         return `<div class="player-pill ${isTurn ? 'active-glow' : ''}">
-            ${p.name} ${p.name === myName ? '<strong>(Вы)</strong>' : ''}: 
+            ${p.name} ${isMe ? '<strong>(Вы)</strong>' : ''}: 
             <strong>${p.coins}💰</strong>
+            ${favColorHtml}
         </div>`;
     }).join('');
+}
+
+function getFavoriteColorTooltip(color) {
+    switch(color) {
+        case 'Blue': return 'Любимый цвет: Защита от кражи карт, уязвим к красным (+2 урон)';
+        case 'Gold': return 'Любимый цвет: Защита от кражи денег (50%), приоритетная цель для фиолетовых';
+        case 'Red': return 'Любимый цвет: Монополия на синие, штраф к золоту, двойная кража у синих';
+        case 'Purple': return 'Любимый цвет: +50% к золоту, игнор чужих синих, охотник за золотыми';
+        default: return '';
+    }
 }
 
 function updatePhaseIndicator(colorClass) {

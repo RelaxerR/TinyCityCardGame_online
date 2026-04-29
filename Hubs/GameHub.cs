@@ -13,6 +13,7 @@ public class GameHub : Hub
     private readonly GameSessionService _sessionService;
     private readonly GameSettings _settings;
     private readonly ILogger<GameHub> _logger;
+    private readonly MetaService _metaService;
 
     /// <summary>
     /// Инициализирует новый экземпляр класса GameHub.
@@ -23,11 +24,13 @@ public class GameHub : Hub
     public GameHub(
         GameSessionService sessionService, 
         IOptions<GameSettings> settings,
-        ILogger<GameHub> logger)
+        ILogger<GameHub> logger,
+        MetaService metaService)
     {
         _sessionService = sessionService;
         _settings = settings.Value;
         _logger = logger;
+        _metaService = metaService;
     }
 
     /// <summary>
@@ -43,6 +46,9 @@ public class GameHub : Hub
             return;
 
         await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
+        await Clients.Caller.SendAsync("ShowMessage", $"👋 Добро пожаловать в порт {roomCode}, {userName}!", "info");
+        _logger.LogInformation("[SYSTEM] Игрок {User} успешно подключен к группе {Room}", userName, roomCode);
+        
         _sessionService.AddPlayer(roomCode, userName, Context.ConnectionId);
 
         var allPlayers = _sessionService.GetPlayers(roomCode);
@@ -110,6 +116,8 @@ public class GameHub : Hub
 
         _sessionService.CreateGame(roomCode);
         await Clients.Group(roomCode).SendAsync("GameStarted");
+        await Clients.Group(roomCode).SendAsync("ShowMessage", "⚓ Игра началась! Рынок открыт, первый ход скоро.", "important");
+        _logger.LogInformation("[SYSTEM] Игра стартована в комнате {Room}. Игроков: {Count}", roomCode, _sessionService.GetPlayerCount(roomCode));
 
         _logger.LogInformation("Игра запущена в комнате {RoomCode}", roomCode);
     }
@@ -185,6 +193,7 @@ public class GameHub : Hub
 
         var player = GetCurrentPlayer(state);
         var card = player?.Inventory.FirstOrDefault(c => c.Id == cardId);
+        if (card != null) _logger.LogDebug("[SYSTEM] Попытка активации: {Player} -> {CardName} ({Color})", player.Name, card.Name, card.Color);
 
         if (!CanActivateCard(card, state))
         {
@@ -194,7 +203,9 @@ public class GameHub : Hub
 
         try
         {
-            await ExecuteEffect(card!.Effect, player!, state, roomCode);
+            await ExecuteEffect(card, card!.Effect, player!, state, roomCode);
+            await SendGameMessage(roomCode, $"✨ {player.Name} активирует: {card.Name} [{card.Color}]", "gold");
+            
             card.IsUsed = true;
 
             if (player != null && CheckWinCondition(player, roomCode).Result)
@@ -239,17 +250,36 @@ public class GameHub : Hub
     /// <param name="player">Игрок для проверки.</param>
     /// <param name="roomCode">Код комнаты.</param>
     /// <returns>True если игрок победил.</returns>
-    private async Task<bool> CheckWinCondition(Player player, string roomCode)
+    private async Task<bool> CheckWinCondition(Player winner, string roomCode)
     {
-        if (player.Coins < _settings.WinTarget)
-            return false;
-        
-        _logger.LogInformation("Игрок {PlayerName} победил в комнате {RoomCode} ({Coins} монет)", 
-            player.Name, roomCode, player.Coins);
+        if (winner.Coins < _settings.WinTarget) return false;
 
-        await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
+        _logger.LogInformation("🏆 Игрок {Name} победил!", winner.Name);
+    
+        // 1. Рассчитываем места для всех игроков
+        var state = _sessionService.GetGameState(roomCode);
+        var sortedPlayers = state.Players.OrderByDescending(p => p.Coins).ToList();
+    
+        // 2. Начисляем репутацию всем участникам
+        int position = 1;
+        foreach (var p in sortedPlayers)
+        {
+            // Подсчет сетов цветов (упрощенно: есть ли 3 карты одного цвета)
+            int colorSets = CountColorSets(p); 
+            await _metaService.AwardReputation(p.Name, position, colorSets);
+            position++;
+        }
+
+        // 3. Сообщаем о победе
+        await Clients.Group(roomCode).SendAsync("GameOver", winner.Name);
         return true;
-
+    }
+    
+    private int CountColorSets(Player player)
+    {
+        return player.Inventory
+            .GroupBy(c => c.Color)
+            .Count(g => g.Count() >= 3);
     }
     
     /// <summary>
@@ -259,7 +289,7 @@ public class GameHub : Hub
     /// <param name="player">Игрок, активирующий карту.</param>
     /// <param name="state">Состояние игры.</param>
     /// <param name="roomCode">Код комнаты.</param>
-    private async Task ExecuteEffect(string effect, Player player, GameState state, string roomCode)
+    private async Task ExecuteEffect(Card card, string effect, Player player, GameState state, string roomCode)
     {
         if (string.IsNullOrWhiteSpace(effect))
             return;
@@ -274,19 +304,19 @@ public class GameHub : Hub
         switch (cmd)
         {
             case "GET":
-                await ExecuteGetEffect(parts, player, roomCode);
+                await ExecuteGetEffect(card, parts, player, roomCode);
                 break;
 
             case "GETALL":
-                await ExecuteGetAllEffect(parts, state, roomCode);
+                await ExecuteGetAllEffect(card, parts, player, state, roomCode);
                 break;
 
             case "STEAL_MONEY":
-                await ExecuteStealMoneyEffect(parts, player, state, roomCode);
+                await ExecuteStealMoneyEffect(card, parts, player, state, roomCode);
                 break;
 
             case "STEAL_CARD":
-                await ExecuteStealCardEffect(parts, player, state, roomCode);
+                await ExecuteStealCardEffect(card, parts, player, state, roomCode);
                 break;
 
             case "GETBY":
@@ -302,75 +332,158 @@ public class GameHub : Hub
     /// <summary>
     /// Эффект GET: игрок получает монеты из банка.
     /// </summary>
-    private async Task ExecuteGetEffect(string[] parts, Player player, string roomCode)
+    private async Task ExecuteGetEffect(Card card, string[] parts, Player player, string roomCode)
     {
-        if (parts.Length < 2 || !int.TryParse(parts[1], out var amount))
-            return;
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var amount)) return;
 
-        player.Coins += amount;
+        // Модификаторы дохода для получателя
+        int finalAmount = amount;
+    
+        // Gold карта
+        if (card.Color == CardColor.Gold)
+        {
+            if (player.FavoriteColor == CardColor.Purple)
+                finalAmount = (int)Math.Ceiling(amount * 1.5); // +50%
+            else if (player.FavoriteColor == CardColor.Red)
+                finalAmount = (int)Math.Floor(amount * 0.5);   // -50%
+        }
+
+        player.Coins += finalAmount;
         await SendGameMessage(roomCode, $"{player.Name} получил +{amount}💰 за свои владения", "gold");
     }
 
     /// <summary>
     /// Эффект GETALL: все игроки получают монеты.
     /// </summary>
-    private async Task ExecuteGetAllEffect(string[] parts, GameState state, string roomCode)
+    // Замените сигнатуру на:
+    private async Task ExecuteGetAllEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
-        if (parts.Length < 2 || !int.TryParse(parts[1], out var bonus))
-            return;
+        if (parts.Length < 2 || !int.TryParse(parts[1], out var baseAmount)) return;
 
+        int amount = baseAmount;
         foreach (var p in state.Players)
-            p.Coins += bonus;
+        {
+            if (card.Color == CardColor.Blue)
+            {
+                // Red Monopoly: если активатор Red, доход получает только он
+                if (activator.FavoriteColor == CardColor.Red && p.Name != activator.Name) continue;
+    
+                // Purple Isolation: не получает от чужих синих
+                if (p.FavoriteColor == CardColor.Purple && p.Name != activator.Name) continue;
+            }
+            p.Coins += amount;
+        }
 
-        await SendGameMessage(roomCode, $"Урожайный год! Все получили по {bonus}💰", "gold");
+        await SendGameMessage(roomCode, $"Урожайный год! Все получили по {amount}💰", "gold");
     }
 
     /// <summary>
     /// Эффект STEAL_MONEY: кража монет у других игроков.
     /// </summary>
-    private async Task ExecuteStealMoneyEffect(string[] parts, Player player, GameState state, string roomCode)
+    private async Task ExecuteStealMoneyEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
-        if (parts.Length <= 2)
-            return;
-
+        if (parts.Length <= 2 || !int.TryParse(parts[2], out var amount)) return;
         var targetMode = parts[1].ToUpper();
-        if (!int.TryParse(parts[2], out var amount))
-            return;
 
-        var victims = SelectVictims(state, player, targetMode);
-        
+        var victims = SelectVictims(state, activator, targetMode);
+
         foreach (var victim in victims)
         {
-            var stolen = Math.Min(victim.Coins, amount);
-            victim.Coins -= stolen;
-            player.Coins += stolen;
+            int stolenAmount = amount;
+
+            // Gold Protection: блокирует 50% от Red карт
+            if (victim.FavoriteColor == CardColor.Gold)
+            {
+                stolenAmount = (int)Math.Floor(stolenAmount * 0.5);
+            }
+
+            // Red Favorite vs Blue Victim: кража x2
+            if (activator.FavoriteColor == CardColor.Red && victim.FavoriteColor == CardColor.Blue)
+            {
+                stolenAmount *= 2;
+            }
+
+            // Blue Vulnerability (уже учтено выше, но для ясности):
+            // Красные карты крадут у синих в 2 раза больше.
+            // Реализовано в строке выше.
+
+            stolenAmount = Math.Min(victim.Coins, stolenAmount);
+        
+            victim.Coins -= stolenAmount;
+            activator.Coins += stolenAmount;
             
-            await SendGameMessage(roomCode, $"💸 {player.Name} украл {stolen}💰 у {victim.Name}!", "important");
+            await SendGameMessage(roomCode, $"💸 {activator.Name} украл {stolenAmount}💰 у {victim.Name}!", "important");
         }
     }
 
     /// <summary>
     /// Эффект STEAL_CARD: кража карт у других игроков.
     /// </summary>
-    private async Task ExecuteStealCardEffect(string[] parts, Player player, GameState state, string roomCode)
+    private async Task ExecuteStealCardEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
-        if (parts.Length <= 1)
-            return;
-
-        var targetMode = parts[1].ToUpper();
-        var victims = SelectVictims(state, player, targetMode);
+        // 1. Определение жертв с учетом приоритета Purple Hunter
+        var victims = SelectVictimsWithPriority(state, activator, parts.Length > 1 ? parts[1].ToUpper() : "RANDOM");
+    
         var random = new Random();
-
-        foreach (var victim in victims.Where(v => v.Inventory.Count != 0))
+        foreach (var victim in victims)
         {
-            var stolenIndex = random.Next(victim.Inventory.Count);
-            var stolen = victim.Inventory[stolenIndex];
+            // Blue Protection: фиолетовые не могут красть у синих
+            if (victim.FavoriteColor == CardColor.Blue)
+                continue;
+
+            // Сколько карт красть?
+            int cardsToSteal = 1;
+        
+            // Purple Hunter: у золотых крадет 2 карты
+            if (activator.FavoriteColor == CardColor.Purple && victim.FavoriteColor == CardColor.Gold)
+            {
+                cardsToSteal = 2;
+            }
+
+            if (victim.Inventory.Count < cardsToSteal)
+                cardsToSteal = victim.Inventory.Count; // Красть сколько есть
+
+            for (int i = 0; i < cardsToSteal; i++)
+            {
+                if (victim.Inventory.Count == 0) break;
             
-            victim.Inventory.RemoveAt(stolenIndex);
-            player.Inventory.Add(stolen);
-            
-            await SendGameMessage(roomCode, $"🏴‍☠️ {player.Name} похитил '{stolen.Name}' у {victim.Name}!", "important");
+                int idx = random.Next(victim.Inventory.Count);
+                var stolen = victim.Inventory[idx];
+                victim.Inventory.RemoveAt(idx);
+                activator.Inventory.Add(stolen);
+            }
+            await SendGameMessage(roomCode, $"🏴‍☠️ {activator.Name} похитил карту у {victim.Name}!", "important");
         }
+    }
+    
+    private List<Player> SelectVictimsWithPriority(GameState state, Player activator, string targetMode)
+    {
+        var otherPlayers = state.Players.Where(p => p.Name != activator.Name).ToList();
+        var random = new Random();
+    
+        // Если активатор - фиолетовый любимец, он предпочитает золотых (70%)
+        if (activator.FavoriteColor == CardColor.Purple)
+        {
+            var goldVictims = otherPlayers.Where(p => p.FavoriteColor == CardColor.Gold).ToList();
+        
+            if (goldVictims.Count > 0)
+            {
+                // 70% шанс выбрать из золотых
+                if (random.Next(100) < 70)
+                {
+                    // Возвращаем только золотых (или случайного золотого, зависит от режима ALL/RANDOM)
+                    return targetMode == "ALL" ? goldVictims : new List<Player> { goldVictims[random.Next(goldVictims.Count)] };
+                }
+            }
+        }
+
+        // Стандартный выбор
+        return targetMode switch
+        {
+            "ALL" => otherPlayers,
+            "RANDOM" when otherPlayers.Count != 0 => new List<Player> { otherPlayers[random.Next(otherPlayers.Count)] },
+            _ => new List<Player>()
+        };
     }
 
     /// <summary>
@@ -433,7 +546,7 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает логику завершения хода.
     /// </summary>
-    private void ProcessTurnEnd(GameState state, string roomCode)
+    private async void ProcessTurnEnd(GameState state, string roomCode)
     {
         state.CurrentTurnIndex = (state.CurrentTurnIndex + 1) % state.TurnOrder.Count;
         
@@ -442,6 +555,8 @@ public class GameHub : Hub
             return;
 
         nextPlayer.Coins += _settings.DailyIncome;
+        await SendGameMessage(roomCode, $"🌅 {nextPlayer.Name} получает ежедневный доход: +{_settings.DailyIncome}💰", "gold");
+        
         nextPlayer.HasBoughtThisTurn = false;
 
         if (state.CurrentTurnIndex == 0)
@@ -455,10 +570,12 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает начало нового раунда.
     /// </summary>
-    private void ProcessNewRound(GameState state, string roomCode)
+    private async void ProcessNewRound(GameState state, string roomCode)
     {
         state.RoundNumber++;
         state.ActiveColor = (CardColor)new Random().Next(0, 4);
+        await SendGameMessage(roomCode, $"🎨 Новый раунд! Активный цвет: {state.ActiveColor}", "important");
+        _logger.LogInformation("[SYSTEM] Раунд {Round}. Активный цвет: {Color}", state.RoundNumber, state.ActiveColor);
 
         foreach (var player in state.Players)
         {
@@ -466,6 +583,7 @@ public class GameHub : Hub
         }
 
         _sessionService.ReplenishMarket(state);
+        await SendGameMessage(roomCode, "📦 Рынок пополнен новыми картами.", "info");
         
         state.UpdateTurnOrder();
 
@@ -491,10 +609,17 @@ public class GameHub : Hub
                 return;
 
             var card = state.Market.FirstOrDefault(c => c.Id == cardId);
-        
+            if (card != null && player != null && !player.CanAfford(card.Cost))
+            {
+                await SendGameMessage(roomCode, $"❌ {player.Name}: недостаточно корма для '{card.Name}'!", "important");
+                return;
+            }
             if (card != null && player.CanAfford(card.Cost))
             {
-                ProcessCardPurchase(player, card, state);
+                ProcessCardPurchase(roomCode, player, card, state);
+                // !!! Обновляем любимый цвет после покупки !!!
+                player.LastBoughtColor = card.Color;
+                player.UpdateFavoriteColor();
                 await BroadcastUpdate(roomCode, state);
             }
         }
@@ -507,12 +632,15 @@ public class GameHub : Hub
     /// <summary>
     /// Обрабатывает покупку карты.
     /// </summary>
-    private void ProcessCardPurchase(Player player, Card card, GameState state)
+    private async void ProcessCardPurchase(string roomCode, Player player, Card card, GameState state)
     {
         player.SpendCoins(card.Cost);
         player.HasBoughtThisTurn = true;
         player.AddCardToInventory(card);
         state.Market.Remove(card);
+        
+        await SendGameMessage(roomCode, $"🛒 {player.Name} приобрел карту '{card.Name}' за {card.Cost}💰", "important");
+        _logger.LogDebug("[SYSTEM] Покупка завершена: {Player} -> {Card}. Баланс: {Coins}", player.Name, card.Name, player.Coins);
 
         _logger.LogInformation("Игрок {PlayerName} купил карту {CardName} за {Cost} монет", 
             player.Name, card.Name, card.Cost);

@@ -14,6 +14,7 @@ public class GameSessionService
     private readonly GameSettings _settings;
     private readonly List<Card> _baseCards;
     private readonly ILogger<GameSessionService> _logger;
+    private readonly MetaService _metaService;
 
     /// <summary>
     /// Инициализирует новый экземпляр класса GameSessionService.
@@ -24,11 +25,13 @@ public class GameSessionService
     public GameSessionService(
         IOptions<GameSettings> settings, 
         CardLoader loader,
-        ILogger<GameSessionService> logger)
+        ILogger<GameSessionService> logger,
+        MetaService metaService)
     {
         _settings = settings.Value;
         _logger = logger;
         _baseCards = loader.LoadCardsFromExcel("Cards.xlsx");
+        _metaService = metaService;
         
         _logger.LogInformation("Сервис сессий инициализирован. Загружено {Count} базовых карт", _baseCards.Count);
     }
@@ -43,6 +46,7 @@ public class GameSessionService
             return;
         
         _rooms[roomCode] = [];
+        _logger.LogInformation("[SYSTEM] Комната {RoomCode} создана. Ожидание игроков...", roomCode);
         _logger.LogInformation("Создана новая комната {RoomCode}", roomCode);
     }
 
@@ -202,7 +206,10 @@ public class GameSessionService
                      Inventory = []
                  }))
         {
+            _metaService.ApplyBonusesToPlayer(player); 
+        
             state.Players.Add(player);
+            _logger.LogDebug("[SYSTEM] Игрок {Name} инициализирован. Старт: {Coins}💰", player.Name, player.Coins);
         }
 
         state.Players = state.Players.OrderBy(p => p.Coins).ToList();
@@ -275,6 +282,7 @@ public class GameSessionService
         while (state.Market.Count < targetSize)
         {
             var card = SelectWeightedCard(rnd, state.RoundNumber);
+            _logger.LogDebug("[SYSTEM] На рынок добавлена: {CardName} (Вес: {Weight}, Раунд: {Round})", card.Name, card.Weight, state.RoundNumber);
             state.Market.Add(card);
         }
 
@@ -332,6 +340,7 @@ public class GameSessionService
         while (state.Market.Count < targetSize)
         {
             var card = SelectWeightedCard(rnd, state.RoundNumber);
+            _logger.LogDebug("[SYSTEM] На рынок добавлена: {CardName} (Вес: {Weight}, Раунд: {Round})", card.Name, card.Weight, state.RoundNumber);
             state.Market.Add(card);
         }
 

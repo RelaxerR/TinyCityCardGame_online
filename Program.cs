@@ -32,9 +32,11 @@ builder.Services.AddSignalR()
 builder.Services.AddSingleton<CardLoader>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.Configure<GameSettings>(builder.Configuration.GetSection("GameBalance"));
+builder.Services.AddSingleton<MetaService>();
 
 // Регистрируем сервисы симуляции
 builder.Services.AddSingleton<CardProbabilityCalculator>();
+builder.Services.AddSingleton<GameBalanceAnalyzer>();
 
 // Регистрируем логгер для отладки игровых событий
 builder.Logging.ClearProviders();
@@ -87,8 +89,24 @@ app.MapHub<GameHub>("/gameHub");
 // 🚀 Запуск расчета вероятностей после старта
 // ============================================================================
 
-var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
-_ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
+var analyzer = app.Services.GetRequiredService<GameBalanceAnalyzer>();
+
+// Run in background and capture exceptions; use smaller count for quick debug (change back to 1000 after verification)
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await analyzer.RunFullAnalysis(10000); // use 100 for testing; set to 1000 for full runs
+    }
+    catch (Exception ex)
+    {
+        var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+        startupLogger.LogError(ex, "❌ Balance analyzer background task failed");
+    }
+});
+
+// var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
+// _ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
 
 // ============================================================================
 // 📝 Логирование запуска

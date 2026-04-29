@@ -462,6 +462,12 @@
     flex-wrap: wrap;
 }
 
+.fav-color-indicator {
+    margin-left: 5px;
+    font-size: 0.9em;
+    cursor: help;
+}
+
 .player-pill {
     background: rgba(255, 255, 255, 0.8);
     padding: 5px 12px;
