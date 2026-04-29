@@ -13,6 +13,7 @@ public class GameHub : Hub
     private readonly GameSessionService _sessionService;
     private readonly GameSettings _settings;
     private readonly ILogger<GameHub> _logger;
+    private readonly MetaService _metaService;
 
     /// <summary>
     /// Инициализирует новый экземпляр класса GameHub.
@@ -23,11 +24,13 @@ public class GameHub : Hub
     public GameHub(
         GameSessionService sessionService, 
         IOptions<GameSettings> settings,
-        ILogger<GameHub> logger)
+        ILogger<GameHub> logger,
+        MetaService metaService)
     {
         _sessionService = sessionService;
         _settings = settings.Value;
         _logger = logger;
+        _metaService = metaService;
     }
 
     /// <summary>
@@ -247,17 +250,36 @@ public class GameHub : Hub
     /// <param name="player">Игрок для проверки.</param>
     /// <param name="roomCode">Код комнаты.</param>
     /// <returns>True если игрок победил.</returns>
-    private async Task<bool> CheckWinCondition(Player player, string roomCode)
+    private async Task<bool> CheckWinCondition(Player winner, string roomCode)
     {
-        if (player.Coins < _settings.WinTarget)
-            return false;
-        
-        _logger.LogInformation("Игрок {PlayerName} победил в комнате {RoomCode} ({Coins} монет)", 
-            player.Name, roomCode, player.Coins);
+        if (winner.Coins < _settings.WinTarget) return false;
 
-        await Clients.Group(roomCode).SendAsync("GameOver", player.Name);
+        _logger.LogInformation("🏆 Игрок {Name} победил!", winner.Name);
+    
+        // 1. Рассчитываем места для всех игроков
+        var state = _sessionService.GetGameState(roomCode);
+        var sortedPlayers = state.Players.OrderByDescending(p => p.Coins).ToList();
+    
+        // 2. Начисляем репутацию всем участникам
+        int position = 1;
+        foreach (var p in sortedPlayers)
+        {
+            // Подсчет сетов цветов (упрощенно: есть ли 3 карты одного цвета)
+            int colorSets = CountColorSets(p); 
+            await _metaService.AwardReputation(p.Name, position, colorSets);
+            position++;
+        }
+
+        // 3. Сообщаем о победе
+        await Clients.Group(roomCode).SendAsync("GameOver", winner.Name);
         return true;
-
+    }
+    
+    private int CountColorSets(Player player)
+    {
+        return player.Inventory
+            .GroupBy(c => c.Color)
+            .Count(g => g.Count() >= 3);
     }
     
     /// <summary>
@@ -286,7 +308,7 @@ public class GameHub : Hub
                 break;
 
             case "GETALL":
-                await ExecuteGetAllEffect(card, parts, state, roomCode);
+                await ExecuteGetAllEffect(card, parts, player, state, roomCode);
                 break;
 
             case "STEAL_MONEY":
@@ -333,46 +355,22 @@ public class GameHub : Hub
     /// <summary>
     /// Эффект GETALL: все игроки получают монеты.
     /// </summary>
-    private async Task ExecuteGetAllEffect(Card card, string[] parts, GameState state, string roomCode)
+    // Замените сигнатуру на:
+    private async Task ExecuteGetAllEffect(Card card, string[] parts, Player activator, GameState state, string roomCode)
     {
         if (parts.Length < 2 || !int.TryParse(parts[1], out var baseAmount)) return;
 
         int amount = baseAmount;
         foreach (var p in state.Players)
         {
-            // Логика для Синих карт (Blue Monopoly & Purple Isolation)
             if (card.Color == CardColor.Blue)
             {
-                // Red Monopoly: доход только активатору (player)
-                // Нам нужно знать, кто активатор. В текущей структуре ActivateCard вызывает этот метод.
-                // Передадим activator через замыкание или контекст, но здесь у нас только state.
-                // *Примечание*: В ActivateCard мы знаем `player`. 
-                // Для упрощения, предположим, что мы передаем `activator` в метод или проверяем по имени, 
-                // но лучше изменить сигнатуру. 
-                // В рамках данного сниппета: используем логику проверки "активатор != получатель".
-            
+                // Red Monopoly: если активатор Red, доход получает только он
+                if (activator.FavoriteColor == CardColor.Red && p.Name != activator.Name) continue;
+    
                 // Purple Isolation: не получает от чужих синих
-                if (p.FavoriteColor == CardColor.Purple)
-                {
-                    // Если p не является тем, кто сыграл карту (activator), он не получает доход.
-                    // *Нюанс реализации*: Здесь нужно знать, кто activator.
-                    // В ExecuteEffect мы можем передать activator.
-                }
+                if (p.FavoriteColor == CardColor.Purple && p.Name != activator.Name) continue;
             }
-
-            // Логика для Золотых карт (Gold Income Mods)
-            if (card.Color == CardColor.Gold)
-            {
-                if (p.FavoriteColor == CardColor.Purple)
-                    amount = (int)Math.Ceiling(amount * 1.5);
-                else if (p.FavoriteColor == CardColor.Red)
-                    amount = (int)Math.Floor(amount * 0.5);
-            }
-        
-            // Применяем Red Monopoly (если активатор Red и карта Blue, получает только он)
-            // Это требует доступа к activator. 
-            // *Решение*: Передаем activator в ExecuteGetAllEffect.
-        
             p.Coins += amount;
         }
 

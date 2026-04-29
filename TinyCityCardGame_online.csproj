@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Folder Include="Analitics\Models\" />
+    <Folder Include="Data\" />
     <Folder Include="wwwroot\images\cards\" />
   </ItemGroup>
 

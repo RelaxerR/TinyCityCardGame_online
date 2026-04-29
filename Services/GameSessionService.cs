@@ -14,6 +14,7 @@ public class GameSessionService
     private readonly GameSettings _settings;
     private readonly List<Card> _baseCards;
     private readonly ILogger<GameSessionService> _logger;
+    private readonly MetaService _metaService;
 
     /// <summary>
     /// Инициализирует новый экземпляр класса GameSessionService.
@@ -24,11 +25,13 @@ public class GameSessionService
     public GameSessionService(
         IOptions<GameSettings> settings, 
         CardLoader loader,
-        ILogger<GameSessionService> logger)
+        ILogger<GameSessionService> logger,
+        MetaService metaService)
     {
         _settings = settings.Value;
         _logger = logger;
         _baseCards = loader.LoadCardsFromExcel("Cards.xlsx");
+        _metaService = metaService;
         
         _logger.LogInformation("Сервис сессий инициализирован. Загружено {Count} базовых карт", _baseCards.Count);
     }
@@ -203,6 +206,8 @@ public class GameSessionService
                      Inventory = []
                  }))
         {
+            _metaService.ApplyBonusesToPlayer(player); 
+        
             state.Players.Add(player);
             _logger.LogDebug("[SYSTEM] Игрок {Name} инициализирован. Старт: {Coins}💰", player.Name, player.Coins);
         }

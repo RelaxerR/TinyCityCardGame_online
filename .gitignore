@@ -25,3 +25,4 @@ Thumbs.db
 node_modules/
 npm-debug.log*
 /color_engine.log
+/Data/meta_profiles.json

@@ -32,6 +32,7 @@ builder.Services.AddSignalR()
 builder.Services.AddSingleton<CardLoader>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.Configure<GameSettings>(builder.Configuration.GetSection("GameBalance"));
+builder.Services.AddSingleton<MetaService>();
 
 // Регистрируем сервисы симуляции
 builder.Services.AddSingleton<CardProbabilityCalculator>();
