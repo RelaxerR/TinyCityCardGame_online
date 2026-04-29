@@ -98,11 +98,10 @@ public class GameBalanceAnalyzer
     {
         public Dictionary<int, CardActivationData> ByCardId { get; init; } = new();
         
-        public void AddActivation(int cardId, CardColor color, int cost, int reward, bool wasEffective)
+        public void AddActivation(int cardId, string cardName, CardColor color, int cost, int reward, bool wasEffective)
         {
             if (!ByCardId.ContainsKey(cardId))
-                ByCardId[cardId] = new CardActivationData { CardColor = color, Cost = cost, BaseReward = reward };
-            
+                ByCardId[cardId] = new CardActivationData { CardName = cardName, CardColor = color, Cost = cost, BaseReward = reward };
             ByCardId[cardId].ActivationCount++;
             if (wasEffective) ByCardId[cardId].EffectiveCount++;
         }
@@ -110,6 +109,7 @@ public class GameBalanceAnalyzer
 
     public record CardActivationData
     {
+        public string CardName { get; init; } = string.Empty;
         public CardColor CardColor { get; init; }
         public int Cost { get; init; }
         public int BaseReward { get; init; }
@@ -354,7 +354,7 @@ public class GameBalanceAnalyzer
         foreach (var card in player.Inventory.Where(c => c.Color == activeColor && !c.IsUsed).ToList())
         {
             card.IsUsed = true;
-            cardActivations.AddActivation(card.Id, card.Color, card.Cost, card.Reward, true);
+            cardActivations.AddActivation(card.Id, card.Name, card.Color, card.Cost, card.Reward, true);
             
             var (command, parameters) = ParseEffect(card.Effect);
             
@@ -770,12 +770,13 @@ public class GameBalanceAnalyzer
         {
             foreach (var cardData in gameResult.CardActivations.ByCardId.Values)
             {
-                var key = $"{cardData.CardColor}_{cardData.Cost}_{cardData.BaseReward}";
+                var key = cardData.CardName;
                 
                 if (!stats.ContainsKey(key))
                 {
                     stats[key] = new CardBalanceData
                     {
+                        CardName = cardData.CardName,
                         Color = cardData.CardColor,
                         Cost = cardData.Cost,
                         BaseReward = cardData.BaseReward,
@@ -918,14 +919,15 @@ public class GameBalanceAnalyzer
             .OrderByDescending(c => c.TotalActivations)
             .Take(8)
             .ToList();
-        
-        Console.WriteLine($"   {"Название",-20} {"Актив.",-8} {"Эффект.",-8} {"Окупаемость"}");
+
+        Console.WriteLine($"   {"Название",-32} {"Актив.",-8} {"Эффект.",-8} {"Окупаемость"}");
         foreach (var card in topCards)
         {
             var icon = GetColorIcon(card.Color);
             var paybackStr = card.AvgPayback == double.MaxValue ? "∞" : $"{card.AvgPayback:F1}";
-            Console.WriteLine($"   {icon} {card.Color}/{card.Cost}c/{card.BaseReward}r".PadRight(20) + 
-                            $"{card.TotalActivations,-8} {card.EffectiveActivations,-8} {paybackStr}");
+            // Формируем строку с реальным именем + иконкой
+            var displayName = $"{icon} {card.CardName}".PadRight(32);
+            Console.WriteLine($"   {displayName} {card.TotalActivations,-8} {card.EffectiveActivations,-8} {paybackStr}");
         }
         Console.WriteLine();
         
@@ -1054,6 +1056,7 @@ public record ColorAnalysisData
 
 public record CardBalanceData
 {
+    public string CardName { get; init; } = string.Empty;
     public CardColor Color { get; init; }
     public int Cost { get; init; }
     public int BaseReward { get; init; }
