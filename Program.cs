@@ -36,6 +36,7 @@ builder.Services.AddSingleton<MetaService>();
 
 // Регистрируем сервисы симуляции
 builder.Services.AddSingleton<CardProbabilityCalculator>();
+builder.Services.AddSingleton<GameBalanceAnalyzer>();
 
 // Регистрируем логгер для отладки игровых событий
 builder.Logging.ClearProviders();
@@ -88,8 +89,11 @@ app.MapHub<GameHub>("/gameHub");
 // 🚀 Запуск расчета вероятностей после старта
 // ============================================================================
 
-var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
-_ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
+var analyzer = app.Services.GetRequiredService<GameBalanceAnalyzer>();
+_ = Task.Run(async () => await analyzer.RunFullAnalysis(1000));
+
+// var probabilityCalculator = app.Services.GetRequiredService<CardProbabilityCalculator>();
+// _ = Task.Run(async () => await probabilityCalculator.CalculateAndPrintProbabilities());
 
 // ============================================================================
 // 📝 Логирование запуска
